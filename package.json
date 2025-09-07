@@ -1,0 +1,50 @@
+{
+	"name": "@yoavf/pair",
+	"version": "0.1.0",
+	"description": "Pair is a CLI utility to run two Claude instances in pair programming mode",
+	"type": "module",
+	"main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "watch": "tsc --watch",
+    "lint": "biome lint src/",
+    "format": "biome format --write src/",
+    "check": "biome check --write src/",
+    "demo:permissions": "tsx src/standalone/permissions-demo.ts",
+    "prepare": "husky"
+  },
+	"bin": {
+		"pair": "./dist/index.js"
+	},
+	"keywords": [
+		"claude",
+		"ai",
+		"pair-programming",
+		"pair",
+		"cli"
+	],
+	"author": "",
+	"license": "MIT",
+	"dependencies": {
+		"@anthropic-ai/claude-code": "^1.0.0",
+		"@anthropic-ai/sdk": "^0.62.0",
+		"ink": "^4.4.1",
+		"marked": "^15.0.12",
+		"marked-terminal": "^7.3.0",
+		"react": "^18.2.0"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.2.4",
+		"@types/marked-terminal": "^6.1.1",
+		"@types/node": "^20.10.0",
+		"@types/react": "^18.2.0",
+		"husky": "^9.1.7",
+		"tsx": "^4.6.2",
+		"typescript": "^5.3.3"
+	},
+	"publishConfig": {
+  		"access": "public"
+	}
+}

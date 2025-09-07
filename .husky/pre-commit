@@ -1,0 +1,5 @@
+# 1) Format and apply safe fixes (writes to working tree)
+npm run check
+
+# 2) Re-stage only modified tracked files (won't add new files)
+git add -u
