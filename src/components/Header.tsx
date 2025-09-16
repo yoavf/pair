@@ -14,22 +14,20 @@ const Header: React.FC<Props> = ({ projectPath, initialTask }) => {
 				<Text dimColor>Project: {projectPath}</Text>
 			</Box>
 
-			<>
-				<Box marginTop={1} flexDirection="column">
-					<Text bold>Task:</Text>
-				</Box>
+			<Box marginTop={1} flexDirection="column">
+				<Text bold>Task:</Text>
+			</Box>
 
-				<Box
-					marginTop={1}
-					marginX={2}
-					paddingY={1}
-					paddingX={2}
-					borderStyle="round"
-					borderColor="gray"
-				>
-					<Markdown>{initialTask}</Markdown>
-				</Box>
-			</>
+			<Box
+				marginTop={1}
+				marginX={2}
+				paddingY={1}
+				paddingX={2}
+				borderStyle="round"
+				borderColor="gray"
+			>
+				<Markdown>{initialTask}</Markdown>
+			</Box>
 		</Box>
 	);
 };
