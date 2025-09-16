@@ -12,8 +12,6 @@
 		"lint": "biome lint src/",
 		"format": "biome format --write src/",
 		"check": "biome check --write src/",
-		"demo:mcp": "tsx src/standalone/mcp-playground.ts",
-		"demo:permissions": "tsx src/standalone/permissions-demo.ts",
 		"prepare": "husky"
 	},
 	"bin": {
