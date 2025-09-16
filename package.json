@@ -12,6 +12,7 @@
 		"lint": "biome lint src/",
 		"format": "biome format --write src/",
 		"check": "biome check --write src/",
+		"demo:mcp": "tsx src/standalone/mcp-playground.ts",
 		"demo:permissions": "tsx src/standalone/permissions-demo.ts",
 		"prepare": "husky"
 	},
@@ -30,6 +31,7 @@
 	"dependencies": {
 		"@anthropic-ai/claude-code": "^1.0.0",
 		"@anthropic-ai/sdk": "^0.62.0",
+		"zod": "^3.23.8",
 		"ink": "^4.4.1",
 		"marked": "^15.0.12",
 		"marked-terminal": "^7.3.0",
