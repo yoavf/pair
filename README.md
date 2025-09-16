@@ -14,7 +14,6 @@ This tool creates a collaborative coding session with two Claude instances worki
 
 The Navigator stays otherwise silent; the Driver makes actual changes and progresses continuously.
 
-
 ## Installation
 
 ```bash
