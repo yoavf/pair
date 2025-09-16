@@ -1,4 +1,4 @@
-# Pair Claude
+# Pair(claude)
 
 Pair is a CLI utility to run two Claude instances in pair programming mode. This experimental CLI application orchestrates two Claude Code instances working together in a pair programming session.
 
@@ -148,6 +148,10 @@ src/
 - Uses your existing Claude authentication. If Claude isn't configured, run `claude` first to set up authentication
 - Uses mock tools (text-based commands like `{{Nod}}`, `{{Feedback}}`) due to a current Claude Code SDK limitation with streaming mode and tools. See [issue #6710](https://github.com/anthropics/claude-code/issues/6710)
 - The two agents can occasionally get into repetitive back‑and‑forth (an implicit "infinite loop"). A hard time limit is enforced for the execution phase (30 minutes by default). You can adjust or disable it via the environment variables documented above.
+
+## Demo
+
+[![asciicast](https://asciinema.org/a/740961.svg)](https://asciinema.org/a/740961)
 
 ## License
 
