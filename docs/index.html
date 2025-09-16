@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pair(claude) — Collaborative AI Pair Programming Experiment</title>
+  <meta name="description" content="Pair(claude) is an experimental CLI that runs two Claude Code agents side‑by‑side — a Navigator and a Driver — to explore the benefits of parallel pair programming." />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="theme-color" content="#f7f8fb" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Kode+Mono:wght@400..700&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://asciinema.org" />
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+
+  <!-- Open Graph / Twitter -->
+  <meta property="og:title" content="Pair (Claude) — Claude & Claude pair programming" />
+  <meta property="og:description" content="An experiment: A pair programming session with two Claude Code agents: Navigator + Driver running in parallel for collaborative development." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="" />
+  <meta property="og:image" content="assets/social.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Pair(claude) — Pair Coding for two Claude Code agents" />
+  <meta name="twitter:description" content="An experiment: A pair programming session with two Claude Code agents: Navigator + Driver running in parallel for collaborative development." />
+  <meta name="twitter:image" content="assets/social.png" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Top GitHub Link -->
+  <a class="top-github" id="topGithub" href="https://github.com/yoavf/pair-claude" target="_blank" rel="noopener">GitHub ↗</a>
+
+  <!-- ASCII Banner -->
+  <div class="ascii-banner" id="banner">
+    <pre id="bannerText">Loading ASCII...</pre>
+  </div>
+
+  <!-- Hero Text -->
+  <div class="hero-text">
+    <p class="tagline">What happens when you put two coding agents side by side?</p>
+    <p class="description">
+      <b>Pair(</b>claude<b>)</b> runs two Claude Code sessions in parallel, collaborating on the same task.
+      One acts as <b>Navigator</b>, planning and reviewing, while the other takes the role of <b>Driver</b>, writing the code.
+    </p>
+    <div class="cta-row">
+      <a class="btn" href="#" id="actionBtn">See it in action</a>
+      <a class="btn secondary" href="https://github.com/yoavf/pair-claude" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </div>
+
+  <!-- Demo -->
+  <div class="demo" id="demo">
+    <!-- Demo Header with Title and Navigation -->
+    <div class="demo-header">
+      <div class="demo-title-section">
+        <div class="demo-title" id="demoTitle">
+          <!-- Title will be populated by JavaScript -->
+        </div>
+        <div class="demo-caption">
+          Playback accelerated 4×
+        </div>
+      </div>
+      <div class="demo-nav-arrows">
+        <button class="demo-nav-btn demo-nav-prev" id="demoNavPrev">‹</button>
+        <div class="demo-nav-dots-header">
+          <span class="demo-nav-dot active" data-demo="0"></span>
+          <span class="demo-nav-dot" data-demo="1"></span>
+          <span class="demo-nav-dot" data-demo="2"></span>
+          <span class="demo-nav-dot" data-demo="3"></span>
+        </div>
+        <button class="demo-nav-btn demo-nav-next" id="demoNavNext">›</button>
+      </div>
+    </div>
+
+    <div class="terminal-frame" id="terminalFrame">
+      <div class="video-content" id="videoContent">
+        <!-- Demo videos will be loaded here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Scroll indicator arrow -->
+  <div class="scroll-arrow">
+    <svg viewBox="0 0 70 40" xmlns="http://www.w3.org/2000/svg">
+      <!-- Stacked chevron lines for 3D effect with more pronounced curve -->
+      <path d="M 15 8 Q 35 30 55 8" stroke="#85c1f0" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M 15 8 Q 35 30 55 8" stroke="#66d9d9" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M 15 8 Q 35 30 55 8" stroke="#ff9999" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M 15 8 Q 35 30 55 8" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+
+  <!-- FAQ and Footer Container -->
+  <div class="bottom-content" style="position: absolute; top: 1600px; left: 50%; transform: translateX(-50%); width: 80%; max-width: 800px;">
+
+    <!-- FAQ Section -->
+    <div class="faq-section" style="color: #9ca3af; font-family: 'Kode Mono', 'Courier New', monospace;">
+      <h2 style="color: #ffffff; text-align: center; margin-bottom: 40px; font-size: 24px;">FAQ</h2>
+
+      <div style="margin-bottom: 30px;">
+        <h3 style="color: #66d9d9; margin-bottom: 10px;">What is Pair(claude)?</h3>
+        <p>Pair(claude) is an experiment in running two Claude Code sessions in <a href="https://en.wikipedia.org/wiki/Pair_programming" target="_blank">pair programming</a> mode.</p>
+      </div>
+
+      <div style="margin-bottom: 30px;">
+        <h3 style="color: #66d9d9; margin-bottom: 10px;">How does it work?</h3>
+        <p>Using the Claude Code sdk and two sessions, messages are relayed between a <i>Driver</i> who makes the change and a <i>Navigator</i> who reviews and provides guidance and feedback. The navigator approves all file edits, and when asked by the Driver, performs a full code review.</p>
+      </div>
+
+      <div style="margin-bottom: 30px;">
+        <h3 style="color: #66d9d9; margin-bottom: 10px;">How can I try this?</h3>
+        <p>
+          Run <code>npx @yoavf/pair claude</code> to start a Pair(claude) session.
+        </p>
+        <p>
+          If you want the <code>pair</code> command available permanently on your system, install it globally with <code>npm install -g @yoavf/pair</code>.
+          After that, you can run <code>pair claude</code> anytime.
+        </p>
+      </div>
+
+      <div style="margin-bottom: 30px;">
+        <h3 style="color: #66d9d9; margin-bottom: 10px;">I have an idea! / It doesn't work</h3>
+        <p>
+          That's not a question :) - But hey, I'd love to know more. Head over to <a href="https://github.com/yoavf/pair-claude" target="_blank">GitHub</a> to participate!
+        </p>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer" style="margin-top: 60px;">
+      <p>Pair(claude) — an experiment by <a href="https://yoav.blog" target="_blank" rel="noopener">Yoav Farhi</a> <a href="https://github.com/yoavf" target="_blank" rel="noopener">@yoavf</a></p>
+    </div>
+  </div>
+
+  <script>
+    // Configure your GitHub repo URL here (will populate both links)
+    window.GITHUB_URL = 'https://github.com/yoavf/pair-claude';
+
+    // List your Asciinema sessions here. Each entry needs an id (the asciicast ID) and a title.
+    window.ASCIICASTS = [
+      { id: '740961', title: 'Demo: pytest-5103 (SWE-Bench Lite)' },
+      { id: '740955', title: 'Demo: scikit-learn-11040 (SWE-Bench Lite)' },
+      { id: '740989', title: 'Demo: sphinx-10325 (SWE-Bench Lite)' },
+      { id: '740998', title: 'Demo: flask-5063 (SWE-Bench Lite)' },
+    ];
+  </script>
+  <script src="main.js"></script>
+</body>
+</html>
