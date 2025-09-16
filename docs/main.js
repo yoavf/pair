@@ -1,34 +1,3 @@
-function generateBanner() {
-  const asciiArt = `░█████████             ░██           ░██                  ░██
-░██     ░██                         ░██                    ░██
-░██     ░██  ░██████   ░██░██░████ ░██                      ░██
-░█████████        ░██  ░██░███     ░██      ▜         ▌     ░██
-░██          ░███████  ░██░██      ░██   ▞▀▖▐ ▝▀▖▌ ▌▞▀▌▞▀▖  ░██
-░██         ░██   ░██  ░██░██      ░██   ▌ ▖▐ ▞▀▌▌ ▌▌ ▌▛▀   ░██
-░██          ░█████░██ ░██░██      ░██   ▝▀  ▘▝▀▘▝▀▘▝▀▘▝▀▘  ░██
-                                    ░██                    ░██
-                                     ░██                  ░██`;
-
-  const coloredHtml = asciiArt.split('\n').map((line, rowIndex) => {
-    return line.split('').map((char, colIndex) => {
-      if (char === ' ') return ' ';
-
-      const isClaudeText = ((rowIndex >= 3 && rowIndex <= 6) &&
-                           (colIndex >= 41 && colIndex <= 57) &&
-                           /[▞▀▖▐▝▌▛▜▘]/.test(char));
-
-      if (isClaudeText) {
-        return `<span style="color: #ffffff">${char}</span>`;
-      } else {
-        const colors = ['#ff9999', '#66d9d9', '#85c1f0', '#a8d5ba', '#ffe4b3', '#e6b3e6'];
-        const colorIndex = (colIndex + rowIndex) % 6;
-        return `<span style="color: ${colors[colorIndex]}">${char}</span>`;
-      }
-    }).join('');
-  }).join('\n');
-
-  document.getElementById('bannerText').innerHTML = coloredHtml;
-}
 
 function updateParallax() {
   const scrollY = window.pageYOffset;
@@ -111,28 +80,43 @@ function scrollToDemo() {
 // Demo carousel functionality
 let currentDemo = 0;
 
-function loadDemo(index) {
+function loadDemo(index, direction = 'right') {
   const videoContent = document.getElementById('videoContent');
   const demoTitle = document.getElementById('demoTitle');
   const demo = window.ASCIICASTS[index];
 
   if (!demo || !videoContent) return;
 
-  // Clear existing content
-  videoContent.innerHTML = '';
+  // Start pixelation effect
+  videoContent.classList.add('pixelating');
 
-  // Create and load new demo script
-  const script = document.createElement('script');
-  script.src = `https://asciinema.org/a/${demo.id}.js`;
-  script.id = `asciicast-${demo.id}`;
-  script.async = true;
+  setTimeout(() => {
+    // Update content during peak pixelation
+    videoContent.innerHTML = '';
 
-  videoContent.appendChild(script);
+    // Create and load new demo script
+    const script = document.createElement('script');
+    script.src = `https://asciinema.org/a/${demo.id}.js`;
+    script.id = `asciicast-${demo.id}`;
+    script.async = true;
 
-  // Update title
-  if (demoTitle) {
-    demoTitle.textContent = demo.title;
-  }
+    videoContent.appendChild(script);
+
+    // Update title
+    if (demoTitle) {
+      demoTitle.textContent = demo.title;
+    }
+
+    // Remove pixelation and add full animation
+    videoContent.classList.remove('pixelating');
+    videoContent.classList.add('pixel-transition');
+
+    // Clean up animation class
+    setTimeout(() => {
+      videoContent.classList.remove('pixel-transition');
+    }, 600);
+
+  }, 200);
 
   // Update active dot
   document.querySelectorAll('.demo-nav-dot').forEach((dot, i) => {
@@ -150,27 +134,27 @@ function loadDemo(index) {
 function nextDemo() {
   if (currentDemo < window.ASCIICASTS.length - 1) {
     currentDemo++;
-    loadDemo(currentDemo);
+    loadDemo(currentDemo, 'right');
   }
 }
 
 function prevDemo() {
   if (currentDemo > 0) {
     currentDemo--;
-    loadDemo(currentDemo);
+    loadDemo(currentDemo, 'left');
   }
 }
 
 function goToDemo(index) {
   if (index >= 0 && index < window.ASCIICASTS.length) {
+    const direction = index > currentDemo ? 'right' : 'left';
     currentDemo = index;
-    loadDemo(currentDemo);
+    loadDemo(currentDemo, direction);
   }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('DOM loaded, generating banner...');
-  generateBanner();
+  console.log('DOM loaded...');
   updateParallax();
 
   // Initialize demo carousel

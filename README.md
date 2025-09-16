@@ -152,20 +152,6 @@ src/
 
 [![asciicast](https://asciinema.org/a/740961.svg)](https://asciinema.org/a/740961)
 
-## MCP/Tools Playground (Standalone)
-
-Use the standalone script to validate streaming and tool behavior in isolation before wiring into the CLI:
-
-- Claude Code tools (streaming + built-ins):
-  - `npm run dev -- tsx src/standalone/mcp-playground.ts --mode=claude-code -p "Scan repo and list key files"`
-  - Optional: `--cwd /path/to/project` to run tools against another folder
-
-- Anthropic SDK + custom tool (non-streaming, baseline tool_use check):
-  - `export ANTHROPIC_API_KEY=...`
-  - `npm run dev -- tsx src/standalone/mcp-playground.ts --mode=anthropic-sdk -p "Summarize the repo; call echo tool"`
-
-Once we confirm the latest SDK streaming + tools are stable, we’ll extend this script to attach MCP servers and surface them as tools for Claude.
-
 ## License
 
 Apache 2.0
