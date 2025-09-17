@@ -51,12 +51,17 @@ pair claude -f tasks/feature-request.md
 # Alternative syntax with equals
 pair claude --path=~/my-project --prompt="Add authentication"
 pair claude --path=~/my-project --file=prompt.txt
+
+# Check version
+pair --version
+pair claude --version
 ```
 
 #### Available Options
 - `--path`: Project directory path (default: current directory)
 - `-p, --prompt`: Task prompt as text
 - `-f, --file`: Load prompt from file (.txt, .md, .json, .yaml, .yml)
+- `--version`: Show version information
 
 ### Development Usage
 ```bash
