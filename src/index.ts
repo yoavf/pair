@@ -10,12 +10,20 @@ import {
 } from "./config.js";
 import { Architect } from "./conversations/Architect.js";
 import { Driver } from "./conversations/Driver.js";
+import type { NavigatorCommand } from "./conversations/Navigator.js";
 import { Navigator } from "./conversations/Navigator.js";
 import { InkDisplayManager } from "./display.js";
+import { type PairMcpServer, startPairMcpServer } from "./mcp/httpServer.js";
+import {
+	NavigatorSessionError,
+	PermissionDeniedError,
+	PermissionMalformedError,
+	PermissionTimeoutError,
+} from "./types/errors.js";
+import type { PermissionRequest } from "./types/permission.js";
 import { displayBanner } from "./utils/banner.js";
 import { type AppConfig, loadConfig, validateConfig } from "./utils/config.js";
 import { Logger } from "./utils/logger.js";
-import type { NavigatorCommand } from "./utils/navigatorCommands.js";
 import {
 	ValidationError,
 	validateAndReadPromptFile,
@@ -37,8 +45,93 @@ class ClaudePairApp {
 	private stopping = false;
 	private appConfig!: AppConfig;
 	private sessionTimer?: NodeJS.Timeout;
+	private mcp?: PairMcpServer;
 	// Removed idle watchdog to minimize UI noise
 	private driverBuffer: string[] = [];
+	// Follow-up prompting handled at end of each cycle
+	// No nudge counters; a per-iteration buffer flush prevents growth
+
+	// driverBuffer holds a short transcript of recent driver actions
+	// It is flushed on permission checks and at the end of each iteration
+
+	private async requestPermissionWithTimeout(
+		request: PermissionRequest,
+		timeoutMs = 15000,
+	) {
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => {
+			controller.abort();
+		}, timeoutMs);
+
+		try {
+			const result = await this.navigator.reviewPermission(request, {
+				signal: controller.signal,
+			});
+			clearTimeout(timeoutId);
+			return result;
+		} catch (error) {
+			clearTimeout(timeoutId);
+
+			if (error instanceof PermissionDeniedError) {
+				return {
+					allowed: false as const,
+					reason: error.reason,
+				};
+			}
+
+			if (error instanceof PermissionTimeoutError) {
+				this.logger.logEvent("PERMISSION_TIMEOUT", {
+					toolName: request.toolName,
+					timeoutMs,
+				});
+				return {
+					allowed: false as const,
+					reason: "Permission request timed out",
+				};
+			}
+
+			if (error instanceof PermissionMalformedError) {
+				this.logger.logEvent("PERMISSION_MALFORMED", {
+					toolName: request.toolName,
+					error: error.message,
+				});
+				return {
+					allowed: false as const,
+					reason: "Navigator provided invalid response",
+				};
+			}
+
+			if (error instanceof NavigatorSessionError) {
+				this.logger.logEvent("PERMISSION_SESSION_ERROR", {
+					toolName: request.toolName,
+					error: error.message,
+				});
+				return {
+					allowed: false as const,
+					reason: "Navigator session error",
+				};
+			}
+
+			if (controller.signal.aborted) {
+				this.logger.logEvent("PERMISSION_ABORTED", {
+					toolName: request.toolName,
+				});
+				return {
+					allowed: false as const,
+					reason: "Permission request was cancelled",
+				};
+			}
+
+			this.logger.logEvent("PERMISSION_UNKNOWN_ERROR", {
+				toolName: request.toolName,
+				error: error instanceof Error ? error.message : String(error),
+			});
+			return {
+				allowed: false as const,
+				reason: "Unknown error occurred",
+			};
+		}
+	}
 
 	constructor(
 		private projectPath: string,
@@ -52,23 +145,57 @@ class ClaudePairApp {
 		this.config.initialTask = task;
 
 		this.logger = new Logger("claude-pair-debug.log");
+		const logPath = this.logger.getFilePath();
+		this.logger.logEvent("APP_LOGGING_CONFIG", {
+			level: process.env.LOG_LEVEL || "(disabled)",
+			file: logPath || "(none)",
+		});
+	}
+
+	/**
+	 * Start the application
+	 */
+	async start(): Promise<void> {
+		// Initialize display
+		this.display = new InkDisplayManager();
+		this.display.start(this.projectPath, this.task, this.appConfig, () => {
+			this.stopAllAndExit();
+		});
+
+		// Start the single-process HTTP/SSE MCP server (two paths) and wire agents to it
+		this.logger.logEvent("APP_MCP_STARTING", {});
+		this.mcp = await startPairMcpServer(undefined, this.logger);
+		const navUrl = this.mcp.urls.navigator;
+		const drvUrl = this.mcp.urls.driver;
+		this.logger.logEvent("APP_MCP_URLS", { navUrl, drvUrl });
 
 		// Create simple agents
 		this.architect = new Architect(
 			PLANNING_NAVIGATOR_PROMPT,
 			["Read", "Grep", "Glob", "WebSearch", "WebFetch", "TodoWrite", "Bash"],
 			TURN_LIMITS.ARCHITECT,
-			projectPath,
+			this.projectPath,
 			this.logger,
 		);
 
 		this.navigator = new Navigator(
 			MONITORING_NAVIGATOR_PROMPT,
-			// Read-only tool set for visibility without making changes
-			["Read", "Grep", "Glob", "WebSearch", "WebFetch", "Bash", "TodoWrite"],
+			// Read-only tools + Bash(git diff/*, git status/*) and TodoWrite for status
+			[
+				"Read",
+				"Grep",
+				"Glob",
+				"WebSearch",
+				"WebFetch",
+				"Bash(git diff:*)",
+				"Bash(git status:*)",
+				"Bash(git show:*)",
+				"TodoWrite",
+			],
 			this.appConfig.navigatorMaxTurns,
-			projectPath,
+			this.projectPath,
 			this.logger,
+			navUrl,
 		);
 
 		// Permission broker: canUseTool handler wired to Navigator
@@ -82,10 +209,11 @@ class ClaudePairApp {
 					updatedInput: Record<string, unknown>;
 					updatedPermissions?: Record<string, unknown>;
 			  }
-			| { behavior: "deny"; message: string; interrupt?: boolean }
+			| { behavior: "deny"; message: string }
 		> => {
 			const needsApproval =
 				toolName === "Write" || toolName === "Edit" || toolName === "MultiEdit";
+
 			if (!needsApproval) {
 				return { behavior: "allow", updatedInput: input };
 			}
@@ -100,48 +228,39 @@ class ClaudePairApp {
 				inputKeys: Object.keys(input || {}),
 				transcriptPreview: transcript.slice(0, 200),
 			});
-			const decision = await this.navigator.reviewPermission(
-				transcript,
+
+			const result = await this.requestPermissionWithTimeout({
+				driverTranscript: transcript,
 				toolName,
 				input,
-			);
+			});
+
 			this.display?.showTransfer("navigator", "driver", "Decision");
 			this.display?.updateStatus(
-				decision.allow
-					? decision.alwaysAllow
+				result.allowed
+					? result.alwaysAllow
 						? `Approved (always): ${toolName}`
 						: `Approved: ${toolName}`
 					: `Denied: ${toolName}`,
 			);
 			this.logger.logEvent("PERMISSION_DECISION", {
 				toolName,
-				allow: decision.allow,
-				comment: decision.comment,
+				allowed: result.allowed,
 			});
-			if (!decision.allow) {
-				// Inform the driver why the request was denied so it can adjust
-				const msg = decision.comment
-					? `Permission denied for ${toolName}: ${decision.comment}`
-					: `Permission denied for ${toolName}. Please adjust your approach and try again.`;
-				this.driver.pushNavigatorFeedback(msg);
+
+			if (!result.allowed) {
 				return {
 					behavior: "deny",
-					message: decision.comment || "Navigator denied tool usage",
-					interrupt: false,
+					message: result.reason,
 				};
 			}
-			// Do not inject approval comments; approvals are implicit
-			// If navigator provided actionable feedback, forward it to the driver
-			if (decision.feedback && decision.feedback.trim().length > 0) {
-				this.driver.pushNavigatorFeedback(decision.feedback.trim());
-			}
-			// If navigator opted for always-allow and SDK provided suggestions, pass them back
-			const updatedPermissions = decision.alwaysAllow
+
+			const updatedPermissions = result.alwaysAllow
 				? options?.suggestions
 				: undefined;
 			return {
 				behavior: "allow",
-				updatedInput: decision.updatedInput ?? input,
+				updatedInput: result.updatedInput,
 				// biome-ignore lint/suspicious/noExplicitAny: SDK will validate structure
 				updatedPermissions: updatedPermissions as any,
 			};
@@ -151,23 +270,13 @@ class ClaudePairApp {
 			DRIVER_PROMPT,
 			["all"],
 			this.appConfig.driverMaxTurns,
-			projectPath,
+			this.projectPath,
 			this.logger,
 			canUseTool,
+			drvUrl,
 		);
 
 		this.setupEventHandlers();
-	}
-
-	/**
-	 * Start the application
-	 */
-	async start(): Promise<void> {
-		// Initialize display
-		this.display = new InkDisplayManager();
-		this.display.start(this.projectPath, this.task, this.appConfig, () => {
-			this.stopAllAndExit();
-		});
 
 		try {
 			this.logger.logEvent("APP_ARCHITECT_STARTING", {
@@ -225,226 +334,306 @@ class ClaudePairApp {
 	 * Run the implementation loop between driver and navigator
 	 */
 	private async runImplementationLoop(plan: string): Promise<void> {
-		try {
-			// Set hard session time limit
-			const limitMs = this.appConfig.sessionHardLimitMs;
-			const deadline = Date.now() + limitMs;
-			this.sessionTimer = setTimeout(() => {
-				try {
-					this.logger.logEvent("IMPLEMENTATION_HARD_LIMIT_REACHED", {
-						limitMs,
-					});
-					this.display.updateStatus(
-						`⏲️ Session limit reached (${Math.floor(limitMs / 60000)}m) — stopping...`,
-					);
-					void this.stopAllAndExit();
-				} catch {}
-			}, limitMs);
-			// Initialize navigator with plan context
-			this.logger.logEvent("IMPLEMENTATION_LOOP_NAVIGATOR_INIT_START", {});
-			await this.navigator.initialize(this.task, plan);
-			this.logger.logEvent("IMPLEMENTATION_LOOP_NAVIGATOR_INIT_COMPLETE", {});
+		// Set hard session time limit
+		const limitMs = this.appConfig.sessionHardLimitMs;
+		const deadline = Date.now() + limitMs;
+		this.sessionTimer = setTimeout(() => {
+			try {
+				this.logger.logEvent("IMPLEMENTATION_HARD_LIMIT_REACHED", {
+					limitMs,
+				});
+				this.display.updateStatus(
+					`⏲️ Session limit reached (${Math.floor(limitMs / 60000)}m) — stopping...`,
+				);
+				void this.stopAllAndExit();
+			} catch {}
+		}, limitMs);
+		// Initialize navigator with plan context
+		this.logger.logEvent("IMPLEMENTATION_LOOP_NAVIGATOR_INIT_START", {});
+		await this.navigator.initialize(this.task, plan);
+		this.logger.logEvent("IMPLEMENTATION_LOOP_NAVIGATOR_INIT_COMPLETE", {});
 
-			// Start driver implementation
-			this.logger.logEvent("IMPLEMENTATION_LOOP_DRIVER_START", {});
-			let driverMessages = await this.driver.startImplementation(plan);
-			this.logger.logEvent("IMPLEMENTATION_LOOP_DRIVER_INITIAL_MESSAGES", {
-				messageCount: driverMessages.length,
+		// Start driver implementation
+		this.logger.logEvent("IMPLEMENTATION_LOOP_DRIVER_START", {});
+		let driverMessages = await this.driver.startImplementation(plan);
+		this.logger.logEvent("IMPLEMENTATION_LOOP_DRIVER_INITIAL_MESSAGES", {
+			messageCount: driverMessages.length,
+		});
+
+		// Main implementation loop
+		let loopCount = 0;
+		while (true) {
+			if (Date.now() > deadline) {
+				this.logger.logEvent("IMPLEMENTATION_LOOP_DEADLINE_EXIT", {});
+				break;
+			}
+			loopCount++;
+			this.logger.logEvent("IMPLEMENTATION_LOOP_ITERATION", {
+				loopCount,
+				driverSessionId: this.driver.getSessionId(),
+				navigatorSessionId: this.navigator.getSessionId(),
 			});
 
-			// Main implementation loop
-			let loopCount = 0;
-			while (true) {
-				if (Date.now() > deadline) {
-					this.logger.logEvent("IMPLEMENTATION_LOOP_DEADLINE_EXIT", {});
-					break;
+			// Check if driver requested review via MCP tools
+			const driverCommands = this.driver.getAndClearDriverCommands();
+			const driverCommand =
+				driverCommands.length > 0 ? driverCommands[0] : null;
+			const dcType = driverCommand?.type;
+
+			// Guardrail: if driver text indicates completion intent but no review tool was called, nudge to request review immediately
+			if (!dcType) {
+				const combinedDriverText = (driverMessages || [])
+					.join("\n")
+					.toLowerCase();
+				if (ClaudePairApp.detectsCompletionIntent(combinedDriverText)) {
+					this.display.updateStatus(
+						"Driver indicated completion — prompting to request review…",
+					);
+					const prompt =
+						"It sounds like you consider the implementation complete. Please request a review now by calling the mcp__driver__driverRequestReview tool with a brief context of what you implemented. Do not continue with further edits until the review is returned.";
+					driverMessages = await this.driver.continueWithFeedback(prompt);
+					continue;
 				}
-				loopCount++;
-				this.logger.logEvent("IMPLEMENTATION_LOOP_ITERATION", {
-					loopCount,
-					driverSessionId: this.driver.getSessionId(),
-					navigatorSessionId: this.navigator.getSessionId(),
-				});
+			}
 
-				// Check if driver requested review or guidance in its recent output
-				const driverCommand = Driver.hasRequestReview(driverMessages);
-				const dcType = driverCommand?.type as string | undefined;
-				if (dcType === "request_review") {
-					this.logger.logEvent("IMPLEMENTATION_LOOP_REVIEW_REQUESTED", {});
-					const combinedMessage = Driver.combineMessagesForNavigator([
-						...this.driverBuffer,
-						...driverMessages,
-					]);
-					this.driverBuffer = [];
-					if (combinedMessage) {
-						this.display.showTransfer("driver", "navigator", "Review request");
-						this.logger.logEvent(
-							"IMPLEMENTATION_LOOP_SENDING_REVIEW_TO_NAVIGATOR",
-							{
-								messageLength: combinedMessage.length,
-							},
-						);
-						// biome-ignore lint/suspicious/noExplicitAny: Navigator command response type from Claude Code SDK
-						const _navResp: any =
-							await this.navigator.processDriverMessage(combinedMessage);
-						// biome-ignore lint/suspicious/noExplicitAny: Navigator command array type from Claude Code SDK
-						const navCommands: any[] = Array.isArray(_navResp)
-							? _navResp
-							: _navResp
-								? [_navResp]
-								: [];
+			if (dcType === "request_review") {
+				this.logger.logEvent("IMPLEMENTATION_LOOP_REVIEW_REQUESTED", {});
+				const combinedMessage = Driver.combineMessagesForNavigator([
+					...this.driverBuffer,
+					...driverMessages,
+				]);
+				this.driverBuffer = [];
+				if (combinedMessage) {
+					this.display.showTransfer("driver", "navigator", "Review request");
+					this.logger.logEvent(
+						"IMPLEMENTATION_LOOP_SENDING_REVIEW_TO_NAVIGATOR",
+						{
+							messageLength: combinedMessage.length,
+						},
+					);
+					// biome-ignore lint/suspicious/noExplicitAny: Navigator command response type from Claude Code SDK
+					const _navResp: any =
+						await this.navigator.processDriverMessage(combinedMessage);
+					// biome-ignore lint/suspicious/noExplicitAny: Navigator command array type from Claude Code SDK
+					const navCommands: any[] = Array.isArray(_navResp)
+						? _navResp
+						: _navResp
+							? [_navResp]
+							: [];
 
-						if (navCommands.length > 0) {
-							for (const cmd of navCommands) {
-								this.logger.logEvent("IMPLEMENTATION_LOOP_NAVIGATOR_COMMAND", {
-									commandType: cmd.type,
-									hasComment: !!cmd.comment,
-									pass: cmd.pass,
-								});
+					if (navCommands.length > 0) {
+						let reviewComments: string | null = null;
+						let shouldEnd = false;
+						let endSummary: string | undefined;
+						for (const cmd of navCommands) {
+							this.logger.logEvent("IMPLEMENTATION_LOOP_NAVIGATOR_COMMAND", {
+								commandType: cmd.type,
+								hasComment: !!cmd.comment,
+								pass: cmd.pass,
+							});
 
-								if (cmd.type === "code_review") {
-									this.display.setPhase("review");
+							if (cmd.type === "code_review") {
+								this.display.setPhase("review");
+								// Only extract comments for failed reviews
+								if (!cmd.pass) {
+									reviewComments = Navigator.extractFailedReviewComment(cmd);
+								}
+							}
+
+							if (Navigator.shouldEndSession(cmd)) {
+								shouldEnd = true;
+								endSummary =
+									cmd.type === "complete" ? cmd.summary : cmd.comment;
+							}
+						}
+
+						if (reviewComments && !shouldEnd) {
+							this.logger.logEvent(
+								"IMPLEMENTATION_LOOP_NAVIGATOR_REVIEW_COMMENTS",
+								{
+									commentsLength: reviewComments.length,
+								},
+							);
+							this.display.showTransfer(
+								"navigator",
+								"driver",
+								"Review comments",
+							);
+							this.display.setPhase("execution");
+							driverMessages =
+								await this.driver.continueWithFeedback(reviewComments);
+							continue;
+						}
+
+						if (shouldEnd) {
+							this.logger.logEvent("IMPLEMENTATION_LOOP_COMPLETED", {
+								summary: endSummary || "Implementation finished",
+							});
+							this.display.setPhase("complete");
+							await this.stopAllAndExit();
+							return;
+						}
+					} else {
+						// If no commands, re-prompt the navigator until we get a decision (bounded retries)
+						this.display.updateStatus("Waiting for review decision…");
+						let attempts = 0;
+						while (attempts < 5) {
+							attempts++;
+							const retryPrompt = `${combinedMessage}\n\nSTRICT: Respond with exactly one MCP tool call: mcp__navigator__navigatorCodeReview OR mcp__navigator__navigatorComplete. No other text.`;
+							const retryResp =
+								await this.navigator.processDriverMessage(retryPrompt);
+							const cmds: NavigatorCommand[] = Array.isArray(retryResp)
+								? retryResp
+								: retryResp
+									? [retryResp]
+									: [];
+							if (cmds.length > 0) {
+								const reviewParts: string[] = [];
+								let shouldEnd = false;
+								let endSummary: string | undefined;
+								for (const cmd of cmds) {
+									this.logger.logEvent(
+										"IMPLEMENTATION_LOOP_NAVIGATOR_COMMAND",
+										{
+											commandType: cmd.type,
+											hasComment: !!cmd.comment,
+											pass: cmd.pass,
+										},
+									);
+
+									if (cmd.type === "code_review") {
+										this.display.setPhase("review");
+										if (!cmd.pass) {
+											const comment = Navigator.extractFailedReviewComment(cmd);
+											if (comment && comment.trim().length > 0)
+												reviewParts.push(comment);
+										}
+									}
+
+									if (Navigator.shouldEndSession(cmd)) {
+										shouldEnd = true;
+										endSummary =
+											cmd.type === "complete" ? cmd.summary : cmd.comment;
+									}
 								}
 
-								if (Navigator.shouldEndSession(cmd)) {
-									const summary =
-										cmd.type === "complete" ? cmd.summary : cmd.comment;
+								if (reviewParts.length > 0 && !shouldEnd) {
+									const reviewMessage = reviewParts.join("\n\n");
+									this.display.showTransfer(
+										"navigator",
+										"driver",
+										"Review comments",
+									);
+									this.display.setPhase("execution");
+									driverMessages =
+										await this.driver.continueWithFeedback(reviewMessage);
+									break;
+								}
+
+								if (shouldEnd) {
 									this.logger.logEvent("IMPLEMENTATION_LOOP_COMPLETED", {
-										summary: summary || "Implementation finished",
+										summary: endSummary || "Implementation finished",
 									});
 									this.display.setPhase("complete");
 									await this.stopAllAndExit();
 									return;
 								}
-
-								const feedback = Navigator.extractFeedbackForDriver(cmd);
-								if (!feedback || feedback.trim().length === 0) {
-									continue;
-								}
-
-								this.logger.logEvent("IMPLEMENTATION_LOOP_NAVIGATOR_FEEDBACK", {
-									feedbackLength: feedback.length,
-								});
-								this.display.showTransfer(
-									"navigator",
-									"driver",
-									"Review feedback",
-								);
-								this.display.setPhase("execution");
-								driverMessages =
-									await this.driver.continueWithFeedback(feedback);
+								break;
 							}
-						} else {
-							// If no commands, re-prompt the navigator until we get a decision (bounded retries)
-							this.display.updateStatus("Waiting for review decision…");
-							let attempts = 0;
-							while (attempts < 5) {
-								attempts++;
-								const retryResp = await this.navigator.processDriverMessage(
-									"STRICT: Respond with exactly one tag: {{CodeReview ...}} or {{Complete ...}}",
-								);
-								const cmds: NavigatorCommand[] = Array.isArray(retryResp)
-									? retryResp
-									: retryResp
-										? [retryResp]
-										: [];
-								if (cmds.length > 0) {
-									for (const cmd of cmds) {
-										this.logger.logEvent(
-											"IMPLEMENTATION_LOOP_NAVIGATOR_COMMAND",
-											{
-												commandType: cmd.type,
-												hasComment: !!cmd.comment,
-												pass: cmd.pass,
-											},
-										);
-
-										if (cmd.type === "code_review")
-											this.display.setPhase("review");
-
-										if (Navigator.shouldEndSession(cmd)) {
-											const summary =
-												cmd.type === "complete" ? cmd.summary : cmd.comment;
-											this.logger.logEvent("IMPLEMENTATION_LOOP_COMPLETED", {
-												summary: summary || "Implementation finished",
-											});
-											this.display.setPhase("complete");
-											await this.stopAllAndExit();
-											return;
-										}
-
-										const feedback = Navigator.extractFeedbackForDriver(cmd);
-										if (feedback && feedback.trim().length > 0) {
-											this.display.showTransfer(
-												"navigator",
-												"driver",
-												"Review feedback",
-											);
-											this.display.setPhase("execution");
-											driverMessages =
-												await this.driver.continueWithFeedback(feedback);
-											break;
-										}
-									}
-									break;
-								}
-								await new Promise((r) => setTimeout(r, 1000));
-							}
-							if (attempts >= 5) {
-								this.logger.logEvent(
-									"IMPLEMENTATION_LOOP_NAVIGATOR_EMPTY_DECISION",
-									{},
-								);
-								driverMessages =
-									await this.driver.continueWithFeedback("Please continue.");
-							}
+							await new Promise((r) => setTimeout(r, 1000));
 						}
-						continue; // Next loop
-					}
-
-					// Handle guidance requests
-					const dcType2 = driverCommand?.type as string | undefined;
-					if (dcType2 === "request_guidance") {
-						const combinedMessage = Driver.combineMessagesForNavigator([
-							...this.driverBuffer,
-							...driverMessages,
-						]);
-						this.driverBuffer = [];
-						if (combinedMessage) {
-							this.display.showTransfer(
-								"driver",
-								"navigator",
-								"Guidance request",
+						if (attempts >= 5) {
+							this.logger.logEvent(
+								"IMPLEMENTATION_LOOP_NAVIGATOR_EMPTY_DECISION",
+								{},
 							);
-							const guidance =
-								await this.navigator.provideGuidance(combinedMessage);
-							if (guidance && guidance.trim().length > 0) {
-								this.display.showTransfer("navigator", "driver", "Guidance");
-								driverMessages =
-									await this.driver.continueWithFeedback(guidance);
-								continue;
-							}
+							driverMessages =
+								await this.driver.continueWithFeedback("Please continue.");
+						}
+					}
+					continue; // Next loop
+				}
+
+				// Default path: simply continue
+				this.driverBuffer = [];
+				driverMessages =
+					await this.driver.continueWithFeedback("Please continue.");
+			} else if (dcType === "request_guidance") {
+				this.logger.logEvent("IMPLEMENTATION_LOOP_GUIDANCE_REQUESTED", {});
+				const combinedMessage = Driver.combineMessagesForNavigator([
+					...this.driverBuffer,
+					...driverMessages,
+				]);
+				this.driverBuffer = [];
+				if (combinedMessage) {
+					this.display.showTransfer("driver", "navigator", "Guidance request");
+					this.logger.logEvent(
+						"IMPLEMENTATION_LOOP_SENDING_GUIDANCE_TO_NAVIGATOR",
+						{
+							messageLength: combinedMessage.length,
+						},
+					);
+					// Process guidance request with navigator
+					const _navResp: any =
+						await this.navigator.processDriverMessage(combinedMessage);
+					const navCommands: any[] = Array.isArray(_navResp)
+						? _navResp
+						: _navResp
+							? [_navResp]
+							: [];
+
+					// Check for session end in guidance response
+					let shouldEnd = false;
+					let endReason: string | undefined;
+					for (const cmd of navCommands) {
+						if (Navigator.shouldEndSession(cmd)) {
+							shouldEnd = true;
+							endReason = cmd.type === "complete" ? cmd.summary : cmd.comment;
 						}
 					}
 
-					// Default path: no navigator involvement; ask driver to continue
+					if (shouldEnd) {
+						this.logger.logEvent("IMPLEMENTATION_LOOP_COMPLETED", {
+							reason: endReason || "Session completed by navigator",
+						});
+						this.display.setPhase("complete");
+						await this.stopAllAndExit();
+						return;
+					}
+
+					// Provide guidance and continue
+					this.display.showTransfer("navigator", "driver", "Guidance");
+					this.display.updateStatus("Providing guidance to driver");
+					const guidanceMessage =
+						"Continue with your implementation based on the guidance provided.";
 					driverMessages =
-						await this.driver.continueWithFeedback("Please continue.");
-				} else {
-					// Empty batch received. Brief backoff, then nudge the driver to continue.
-					this.logger.logEvent("IMPLEMENTATION_LOOP_EMPTY_BATCH", {});
-					await new Promise((r) => setTimeout(r, 300));
-					driverMessages =
-						await this.driver.continueWithFeedback("Please continue.");
+						await this.driver.continueWithFeedback(guidanceMessage);
 				}
+			} else {
+				// Empty batch received. Brief backoff, then continue.
+				this.logger.logEvent("IMPLEMENTATION_LOOP_EMPTY_BATCH", {});
+				await new Promise((r) => setTimeout(r, 300));
+				driverMessages = await this.driver.continueWithFeedback(
+					"Please continue with the next step.",
+				);
+				this.driverBuffer = [];
 			}
-		} catch (error) {
-			this.logger.logEvent("IMPLEMENTATION_LOOP_ERROR", {
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-			});
-			throw error;
 		}
+	}
+
+	// Heuristic to detect that the driver believes implementation is complete and intends to request review
+	private static detectsCompletionIntent(text: string): boolean {
+		if (!text) return false;
+		const signals = [
+			"implementation is complete",
+			"i have completed",
+			"finished implementation",
+			"ready for review",
+			"request a review",
+			"should now request a review",
+			"please review my work",
+		];
+		return signals.some((s) => text.includes(s));
 	}
 
 	/**
@@ -521,6 +710,9 @@ class ClaudePairApp {
 		this.logger?.close();
 		if (this.sessionTimer) clearTimeout(this.sessionTimer);
 		// No idle timer to clear
+		try {
+			void this.mcp?.close();
+		} catch {}
 	}
 
 	private async stopAllAndExit(): Promise<void> {

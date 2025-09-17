@@ -22,9 +22,8 @@ Pair is a CLI utility to run two Claude instances in pair programming mode.
 
 ## Architecture & Agent Behavior
 - Architect (plan): Creates the initial plan in a non-interactive planning phase, then exits after returning plan via ExitPlanMode.
-- Navigator (review): Reviews and approves/denies Driver's file modifications, provides guidance and code reviews using read‑only tools (Read/Grep/Glob/WebSearch/WebFetch/Bash).
-- Driver (implement): Implements changes with full tool access, coordinated with navigator feedback and approvals.
-- Forwarding: all navigator commands (Feedback + Nod with comment) are forwarded in order; empty nods are not forwarded.
+- Navigator (review): Reviews and approves/denies Driver's file modifications and performs code reviews using read‑only tools (Read/Grep/Glob/WebSearch/WebFetch/Bash).
+- Driver (implement): Implements changes with full tool access, coordinated with navigator approvals.
 - Communication: structured commands facilitate coordination between agents with visual transfer indicators.
 - Turn limits: Navigator=50, Driver=20 (configurable via environment variables).
 
@@ -44,7 +43,7 @@ Pair is a CLI utility to run two Claude instances in pair programming mode.
 - If adding tests, co-locate under `src/**/__tests__/*.test.ts` and document the chosen runner in the PR.
 
 ## Commit & Pull Request Guidelines
-- Commits: imperative present tense (e.g., "add navigator feedback"). Conventional Commits are welcome (`feat:`, `fix:`, etc.).
+- Commits: imperative present tense (e.g., "add code review"). Conventional Commits are welcome (`feat:`, `fix:`, etc.).
 - PRs: include purpose, linked issues, runnable example command, and screenshots/GIFs of terminal UI when relevant.
 - Keep changes focused; update docs when behavior or flags change.
 - Do not commit secrets; this CLI uses Anthropic credentials. Avoid committing large logs—`Logger` writes to `claude-pair-debug.log`.

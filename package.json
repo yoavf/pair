@@ -12,7 +12,13 @@
 		"lint": "biome lint src/",
 		"format": "biome format --write src/",
 		"check": "biome check --write src/",
-		"prepare": "husky"
+		"prepare": "husky",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:unit": "vitest run test/unit",
+		"test:integration": "vitest run test/integration",
+		"test:coverage": "vitest run --coverage",
+		"preview": "tsx scripts/preview-ui.tsx"
 	},
 	"bin": {
 		"pair": "./dist/index.js"
@@ -29,11 +35,12 @@
 	"dependencies": {
 		"@anthropic-ai/claude-code": "^1.0.0",
 		"@anthropic-ai/sdk": "^0.62.0",
-		"zod": "^3.23.8",
+		"@modelcontextprotocol/sdk": "^1.18.0",
 		"ink": "^4.4.1",
 		"marked": "^15.0.12",
 		"marked-terminal": "^7.3.0",
-		"react": "^18.2.0"
+		"react": "^18.2.0",
+		"zod": "^3.23.8"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.2.4",
@@ -42,7 +49,8 @@
 		"@types/react": "^18.2.0",
 		"husky": "^9.1.7",
 		"tsx": "^4.6.2",
-		"typescript": "^5.3.3"
+		"typescript": "^5.3.3",
+		"vitest": "^2.0.0"
 	},
 	"publishConfig": {
 		"access": "public"

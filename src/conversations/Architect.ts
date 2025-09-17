@@ -71,11 +71,11 @@ export class Architect extends EventEmitter {
 					const content = message.message.content;
 
 					if (Array.isArray(content)) {
-						let fullText = "";
+						let _fullText = "";
 
 						for (const item of content) {
 							if (item.type === "text") {
-								fullText += `${item.text}\n`;
+								_fullText += `${item.text}\n`;
 
 								// Emit for display
 								this.emit("message", {
@@ -98,22 +98,22 @@ export class Architect extends EventEmitter {
 								if (it.name === "ExitPlanMode" && it.input?.plan) {
 									plan = it.input.plan as string;
 									this.logger.logEvent("ARCHITECT_PLAN_CREATED", {
-										planLength: plan?.length || 0,
+										planLength: (plan ?? "").length,
 										turnCount,
 									});
-									stopReason = "plan_created";
+									// Robust early-exit: as soon as ExitPlanMode is called with a plan,
+									// return the plan without waiting for a tool_result from the host.
+									// This avoids environments that don’t implement the ExitPlanMode tool_result handshake.
+									this.logger.logEvent("ARCHITECT_EARLY_RETURN_AFTER_PLAN", {
+										reason: "exit_plan_mode_called",
+										turnCount,
+									});
+									return plan;
 								}
 							}
 						}
 
-						// Also capture text as fallback if tool not used
-						if (!plan && fullText.trim()) {
-							plan = fullText.trim();
-							this.logger.logEvent("ARCHITECT_PLAN_CREATED", {
-								planLength: plan.length,
-								turnCount,
-							});
-						}
+						// No fallback text capture — plan must be returned via ExitPlanMode tool
 					}
 				}
 			}
@@ -124,7 +124,7 @@ export class Architect extends EventEmitter {
 				turnCount,
 				maxTurns: this.maxTurns,
 				hasPlan: !!plan,
-				planLength: plan?.length || 0,
+				planLength: (plan ?? "").length,
 			});
 
 			// Marker to verify control remains in createPlan after completion log
@@ -135,7 +135,7 @@ export class Architect extends EventEmitter {
 			// Check if we got a valid plan
 			this.logger.logEvent("ARCHITECT_PLAN_VALIDATION_START", {
 				hasPlan: !!plan,
-				planLength: plan?.length || 0,
+				planLength: (plan ?? "").length,
 				stopReason,
 			});
 
@@ -154,12 +154,12 @@ export class Architect extends EventEmitter {
 			}
 
 			this.logger.logEvent("ARCHITECT_PLAN_VALIDATION_PASSED", {
-				planLength: plan?.length || 0,
+				planLength: String(plan ?? "").length,
 				stopReason,
 			});
 
 			this.logger.logEvent("ARCHITECT_RETURNING_PLAN", {
-				planLength: plan?.length || 0,
+				planLength: String(plan ?? "").length,
 				hasValidPlan: !!plan,
 			});
 			return plan;

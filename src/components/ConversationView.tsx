@@ -13,7 +13,7 @@ interface Props {
 
 const ConversationView: React.FC<Props> = React.memo(({ messages, phase }) => {
 	// Layout constants
-	const DRIVER_WIDTH = 80; // percent width for bubbles
+	const DRIVER_WIDTH = 85; // percent width for bubbles
 	const SYSTEM_WIDTH = 90; // percent width for tool/system lines
 	const SEPARATOR = "-".repeat(60);
 

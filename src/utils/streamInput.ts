@@ -11,8 +11,10 @@ export class AsyncUserMessageStream implements AsyncIterable<any> {
 		// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK user message structure
 		const userMessage: any = {
 			type: "user",
+			userType: "external",
 			message: {
 				role: "user",
+				// Use standard 'text' items; 'input_text' is not supported by this SDK/API
 				content: [{ type: "text", text }],
 			},
 			parent_tool_use_id: null,

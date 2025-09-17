@@ -7,6 +7,7 @@ import PairProgrammingApp from "./components/PairProgrammingApp.js";
 import { useMessages } from "./hooks/useMessages.js";
 import type { Message, Role } from "./types.js";
 import type { AppConfig } from "./utils/config.js";
+import { formatSystemLine } from "./utils/systemLine.js";
 
 interface Props {
 	projectPath: string;
@@ -32,16 +33,11 @@ export class InkDisplayManager {
 	private setQuitStateFn?: (quitState: "normal" | "confirm") => void;
 	private firstCtrlCPressed = false;
 	private confirmExitTimer?: NodeJS.Timeout;
-
-	// Track last sync times for status bar
-	private lastNavToDriver: Date | null = null;
-	private lastDriverToNav: Date | null = null;
 	private syncTicker?: NodeJS.Timeout;
-	private currentPhase: "planning" | "execution" | "review" | "complete" =
-		"planning";
-	private lastSyncStatus = "";
 	private config!: AppConfig;
 	private projectPath: string = process.cwd();
+	private currentPhase: "planning" | "execution" | "review" | "complete" =
+		"planning";
 
 	start(
 		projectPath: string,
@@ -166,7 +162,9 @@ export class InkDisplayManager {
 			role: "system",
 			content: "🚀 Starting pair coding session to implement the plan...",
 			timestamp: new Date(),
-			sessionRole: "navigator",
+			// Attribute the kickoff banner to the driver lane so navigator tool lines
+			// (which render with a green ⤷ arrow) don’t appear visually threaded under it.
+			sessionRole: "driver",
 		};
 		this.appendMessage(message);
 	}
@@ -174,6 +172,16 @@ export class InkDisplayManager {
 	// biome-ignore lint/suspicious/noExplicitAny: Tool parameters from Claude Code SDK have varied structure
 	showToolUse(role: Role, tool: string, params?: any) {
 		let content = tool;
+		let symbol: string | undefined;
+		let symbolColor: string | undefined;
+
+		const formatted = formatSystemLine(role, tool, params);
+		const isHuman = !!formatted;
+		if (formatted) {
+			content = formatted.content;
+			symbol = formatted.symbol;
+			symbolColor = formatted.symbolColor;
+		}
 
 		if (params) {
 			const toRel = (p?: string) => {
@@ -193,40 +201,45 @@ export class InkDisplayManager {
 				}
 			};
 
-			// Show detailed parameters
-			if (tool === "Read" && params.file_path) {
-				content += ` - ${toRel(params.file_path)}`;
-				if (params.offset) content += ` (from line ${params.offset})`;
-			} else if (tool === "Edit" && params.file_path) {
-				content += ` - ${toRel(params.file_path)}`;
-				if (params.old_string) {
-					const preview = params.old_string.slice(0, 30).replace(/\n/g, "\\n");
-					content += ` (replacing "${preview}...")`;
+			// Show detailed parameters (skip for specialized human-friendly MCP lines)
+			if (!isHuman) {
+				if (tool === "Read" && params.file_path) {
+					content += ` - ${toRel(params.file_path)}`;
+					if (params.offset) content += ` (from line ${params.offset})`;
+				} else if (tool === "Edit" && params.file_path) {
+					content += ` - ${toRel(params.file_path)}`;
+					if (params.old_string) {
+						const preview = params.old_string
+							.slice(0, 30)
+							.replace(/\n/g, "\\n");
+						content += ` (replacing "${preview}...")`;
+					}
+				} else if (tool === "Write" && params.file_path) {
+					content += ` - ${toRel(params.file_path)}`;
+				} else if (tool === "MultiEdit" && params.file_path) {
+					content += ` - ${toRel(params.file_path)} (${params.edits?.length || 0} edits)`;
+				} else if (tool === "Bash" && params.command) {
+					const cmdFull = String(params.command);
+					const cmd = cmdFull.slice(0, 60);
+					content += ` - ${cmd}${cmdFull.length > 60 ? "..." : ""}`;
+				} else if (tool === "Grep" && params.pattern) {
+					content += ` - pattern: "${params.pattern}"`;
+					if (params.path) content += ` in ${toRel(params.path)}`;
+				} else if (tool === "Glob" && params.pattern) {
+					content += ` - pattern: "${params.pattern}"`;
+					if (params.path) content += ` in ${toRel(params.path)}`;
+				} else if (tool === "TodoWrite" && params.todos) {
+					const count = params.todos?.length || 0;
+					const pending =
+						// biome-ignore lint/suspicious/noExplicitAny: TodoWrite tool parameter structure
+						params.todos?.filter((t: any) => t.status === "pending").length ||
+						0;
+					const completed =
+						// biome-ignore lint/suspicious/noExplicitAny: TodoWrite tool parameter structure
+						params.todos?.filter((t: any) => t.status === "completed").length ||
+						0;
+					content += ` - ${count} items (${completed} done, ${pending} pending)`;
 				}
-			} else if (tool === "Write" && params.file_path) {
-				content += ` - ${toRel(params.file_path)}`;
-			} else if (tool === "MultiEdit" && params.file_path) {
-				content += ` - ${toRel(params.file_path)} (${params.edits?.length || 0} edits)`;
-			} else if (tool === "Bash" && params.command) {
-				const cmdFull = String(params.command);
-				const cmd = cmdFull.slice(0, 60);
-				content += ` - ${cmd}${cmdFull.length > 60 ? "..." : ""}`;
-			} else if (tool === "Grep" && params.pattern) {
-				content += ` - pattern: "${params.pattern}"`;
-				if (params.path) content += ` in ${toRel(params.path)}`;
-			} else if (tool === "Glob" && params.pattern) {
-				content += ` - pattern: "${params.pattern}"`;
-				if (params.path) content += ` in ${toRel(params.path)}`;
-			} else if (tool === "TodoWrite" && params.todos) {
-				const count = params.todos?.length || 0;
-				const pending =
-					// biome-ignore lint/suspicious/noExplicitAny: TodoWrite tool parameter structure
-					params.todos?.filter((t: any) => t.status === "pending").length || 0;
-				const completed =
-					// biome-ignore lint/suspicious/noExplicitAny: TodoWrite tool parameter structure
-					params.todos?.filter((t: any) => t.status === "completed").length ||
-					0;
-				content += ` - ${count} items (${completed} done, ${pending} pending)`;
 			}
 		}
 
@@ -235,6 +248,8 @@ export class InkDisplayManager {
 			content,
 			timestamp: new Date(),
 			sessionRole: role,
+			symbol,
+			symbolColor,
 		};
 		this.appendMessage(message);
 	}
@@ -245,45 +260,13 @@ export class InkDisplayManager {
 		}
 	}
 
-	showTransfer(from: Role, to: Role, _label?: string) {
-		// Record the last sync time and refresh status line (no transcript output)
-		const now = new Date();
-		if (from === "navigator" && to === "driver") this.lastNavToDriver = now;
-		if (from === "driver" && to === "navigator") this.lastDriverToNav = now;
-		if (this.config.enableSyncStatus) {
-			this.refreshSyncStatus();
-		}
+	showTransfer(_from: Role, _to: Role, _label?: string) {
+		// No sync status in UI; keep transfers silent
 	}
 
 	private refreshSyncStatus() {
-		if (!this.updateActivity) return;
-		// Only show sync during execution phase
-		if (this.currentPhase !== "execution") return;
-		const navToDrv = this.lastNavToDriver
-			? this.formatRelative(this.lastNavToDriver)
-			: "—";
-		const drvToNav = this.lastDriverToNav
-			? this.formatRelative(this.lastDriverToNav)
-			: "—";
-		const status = `Sync: Nav→Drv ${navToDrv} • Drv→Nav ${drvToNav}`;
-
-		// Only update if status actually changed to prevent unnecessary re-renders
-		if (status !== this.lastSyncStatus) {
-			this.lastSyncStatus = status;
-			this.updateActivity(status);
-		}
-	}
-
-	private formatRelative(when: Date): string {
-		const sec = Math.max(0, Math.floor((Date.now() - when.getTime()) / 1000));
-		if (sec < 1) return "just now";
-		if (sec < 60) return `${sec}s`;
-		const m = Math.floor(sec / 60);
-		const s = sec % 60;
-		if (m < 60) return `${m}m${s.toString().padStart(2, "0")}s`;
-		const h = Math.floor(m / 60);
-		const mm = m % 60;
-		return `${h}h${mm.toString().padStart(2, "0")}m`;
+		// Disabled
+		return;
 	}
 
 	showQueued(from: Role, to: Role, label?: string) {
