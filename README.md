@@ -51,10 +51,6 @@ pair claude -f tasks/feature-request.md
 # Alternative syntax with equals
 pair claude --path=~/my-project --prompt="Add authentication"
 pair claude --path=~/my-project --file=prompt.txt
-
-# Check version
-pair --version
-pair claude --version
 ```
 
 #### Available Options
