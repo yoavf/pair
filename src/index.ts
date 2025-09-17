@@ -23,6 +23,7 @@ import {
 	validateCliArgs,
 	validatePrompt,
 } from "./utils/validation.js";
+import { getVersion } from "./utils/version.js";
 
 /**
  * Claude pair programming orchestrator
@@ -546,6 +547,12 @@ async function main(): Promise<void> {
 
 		const args = process.argv.slice(2);
 
+		// Handle global --version flag
+		if (args.length === 1 && (args[0] === "--version" || args[0] === "-v")) {
+			console.log(getVersion());
+			process.exit(0);
+		}
+
 		// Check if first argument is 'claude' subcommand
 		if (args.length === 0 || args[0] !== "claude") {
 			console.error("Usage: pair claude [options]");
@@ -555,6 +562,7 @@ async function main(): Promise<void> {
 				"  --path <path>          Set the project path (default: current directory)",
 			);
 			console.error("  -f, --file <file>      Read prompt from file");
+			console.error("  --version              Show version information");
 			process.exit(1);
 		}
 
@@ -590,6 +598,9 @@ async function main(): Promise<void> {
 				}
 			} else if (arg.startsWith("--file=")) {
 				promptFile = arg.split("=")[1];
+			} else if (arg === "--version" || arg === "-v") {
+				console.log(getVersion());
+				process.exit(0);
 			} else if (!arg.startsWith("-")) {
 				if (projectPath === process.cwd()) {
 					projectPath = arg;
