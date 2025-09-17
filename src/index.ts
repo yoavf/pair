@@ -551,19 +551,52 @@ async function main(): Promise<void> {
 			process.exit(0);
 		}
 
-		// Check if first argument is 'claude' subcommand
-		if (args.length === 0 || args[0] !== "claude") {
-			// Display banner for help/error cases
+		// Handle global --help flag
+		if (args.length === 1 && (args[0] === "--help" || args[0] === "-h")) {
 			displayBanner();
-			console.error("Usage: pair claude [options]");
-			console.error("\nAvailable options:");
-			console.error("  -p, --prompt <text>    Specify the task prompt");
-			console.error(
+			console.log("Usage: pair claude [options]");
+			console.log("\nAvailable options:");
+			console.log("  -p, --prompt <text>    Specify the task prompt");
+			console.log(
 				"  --path <path>          Set the project path (default: current directory)",
 			);
-			console.error("  -f, --file <file>      Read prompt from file");
-			console.error("  --version              Show version information");
-			process.exit(1);
+			console.log("  -f, --file <file>      Read prompt from file");
+			console.log("  --version              Show version information");
+			console.log("  --help                 Show this help message");
+			process.exit(0);
+		}
+
+		// Check if first argument is 'claude' subcommand
+		if (args.length === 0 || args[0] !== "claude") {
+			// Check if this is a help request (like 'pair help')
+			const isHelpRequest = args.length === 1 && args[0] === "help";
+
+			// Display banner for help/error cases
+			displayBanner();
+			if (isHelpRequest) {
+				console.log("Usage: pair claude [options]");
+				console.log("\nAvailable options:");
+				console.log("  -p, --prompt <text>    Specify the task prompt");
+				console.log(
+					"  --path <path>          Set the project path (default: current directory)",
+				);
+				console.log("  -f, --file <file>      Read prompt from file");
+				console.log("  --version              Show version information");
+				console.log("  --help                 Show this help message");
+				process.exit(0);
+			} else {
+				// This is an actual error case (no args or invalid subcommand)
+				console.error("Usage: pair claude [options]");
+				console.error("\nAvailable options:");
+				console.error("  -p, --prompt <text>    Specify the task prompt");
+				console.error(
+					"  --path <path>          Set the project path (default: current directory)",
+				);
+				console.error("  -f, --file <file>      Read prompt from file");
+				console.error("  --version              Show version information");
+				console.error("  --help                 Show this help message");
+				process.exit(1);
+			}
 		}
 
 		// Remove 'claude' subcommand and proceed with remaining args
@@ -572,6 +605,21 @@ async function main(): Promise<void> {
 		// Handle --version within claude subcommand (before banner)
 		if (claudeArgs.includes("--version") || claudeArgs.includes("-v")) {
 			console.log(getVersion());
+			process.exit(0);
+		}
+
+		// Handle --help within claude subcommand (before banner)
+		if (claudeArgs.includes("--help") || claudeArgs.includes("-h")) {
+			displayBanner();
+			console.log("Usage: pair claude [options]");
+			console.log("\nAvailable options:");
+			console.log("  -p, --prompt <text>    Specify the task prompt");
+			console.log(
+				"  --path <path>          Set the project path (default: current directory)",
+			);
+			console.log("  -f, --file <file>      Read prompt from file");
+			console.log("  --version              Show version information");
+			console.log("  --help                 Show this help message");
 			process.exit(0);
 		}
 
