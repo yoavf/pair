@@ -57,6 +57,7 @@ pair claude --path=~/my-project --file=prompt.txt
 - `--path`: Project directory path (default: current directory)
 - `-p, --prompt`: Task prompt as text
 - `-f, --file`: Load prompt from file (.txt, .md, .json, .yaml, .yml)
+- `--version`: Show version information
 
 ### Development Usage
 ```bash

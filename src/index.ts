@@ -23,6 +23,7 @@ import {
 	validateCliArgs,
 	validatePrompt,
 } from "./utils/validation.js";
+import { getVersion } from "./utils/version.js";
 
 /**
  * Claude pair programming orchestrator
@@ -538,16 +539,22 @@ class ClaudePairApp {
  * Main entry point
  */
 async function main(): Promise<void> {
-	displayBanner();
-
 	try {
 		const config = loadConfig();
 		validateConfig(config);
 
 		const args = process.argv.slice(2);
 
+		// Handle global --version flag
+		if (args.length === 1 && (args[0] === "--version" || args[0] === "-v")) {
+			console.log(getVersion());
+			process.exit(0);
+		}
+
 		// Check if first argument is 'claude' subcommand
 		if (args.length === 0 || args[0] !== "claude") {
+			// Display banner for help/error cases
+			displayBanner();
 			console.error("Usage: pair claude [options]");
 			console.error("\nAvailable options:");
 			console.error("  -p, --prompt <text>    Specify the task prompt");
@@ -555,11 +562,22 @@ async function main(): Promise<void> {
 				"  --path <path>          Set the project path (default: current directory)",
 			);
 			console.error("  -f, --file <file>      Read prompt from file");
+			console.error("  --version              Show version information");
 			process.exit(1);
 		}
 
 		// Remove 'claude' subcommand and proceed with remaining args
 		const claudeArgs = args.slice(1);
+
+		// Handle --version within claude subcommand (before banner)
+		if (claudeArgs.includes("--version") || claudeArgs.includes("-v")) {
+			console.log(getVersion());
+			process.exit(0);
+		}
+
+		// Display banner for normal operations
+		displayBanner();
+
 		validateCliArgs(claudeArgs);
 
 		let projectPath = process.cwd();
