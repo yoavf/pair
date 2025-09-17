@@ -539,8 +539,6 @@ class ClaudePairApp {
  * Main entry point
  */
 async function main(): Promise<void> {
-	displayBanner();
-
 	try {
 		const config = loadConfig();
 		validateConfig(config);
@@ -555,6 +553,8 @@ async function main(): Promise<void> {
 
 		// Check if first argument is 'claude' subcommand
 		if (args.length === 0 || args[0] !== "claude") {
+			// Display banner for help/error cases
+			displayBanner();
 			console.error("Usage: pair claude [options]");
 			console.error("\nAvailable options:");
 			console.error("  -p, --prompt <text>    Specify the task prompt");
@@ -568,6 +568,16 @@ async function main(): Promise<void> {
 
 		// Remove 'claude' subcommand and proceed with remaining args
 		const claudeArgs = args.slice(1);
+
+		// Handle --version within claude subcommand (before banner)
+		if (claudeArgs.includes("--version") || claudeArgs.includes("-v")) {
+			console.log(getVersion());
+			process.exit(0);
+		}
+
+		// Display banner for normal operations
+		displayBanner();
+
 		validateCliArgs(claudeArgs);
 
 		let projectPath = process.cwd();
@@ -598,9 +608,6 @@ async function main(): Promise<void> {
 				}
 			} else if (arg.startsWith("--file=")) {
 				promptFile = arg.split("=")[1];
-			} else if (arg === "--version" || arg === "-v") {
-				console.log(getVersion());
-				process.exit(0);
 			} else if (!arg.startsWith("-")) {
 				if (projectPath === process.cwd()) {
 					projectPath = arg;
