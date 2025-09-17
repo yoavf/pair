@@ -1,16 +1,21 @@
 export type Role = "navigator" | "driver" | "architect";
 
 export type NavigatorCommandType =
-	| "nod"
-	| "feedback"
 	| "code_review"
-	| "complete";
+	| "complete"
+	| "approve"
+	| "approve_always"
+	| "deny"
+	| "feedback";
 
 export interface Message {
 	role: "user" | "assistant" | "system";
 	content: string;
 	timestamp: Date;
 	sessionRole: Role;
+	// Optional symbol customization for system lines (e.g., ✓, x, •, ⏹)
+	symbol?: string;
+	symbolColor?: string; // ink color name
 	// Optional: when a navigator emits a structured command
 	commandType?: NavigatorCommandType;
 	id?: string; // For driver/navigator messages

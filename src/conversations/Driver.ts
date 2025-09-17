@@ -2,11 +2,14 @@ import { EventEmitter } from "node:events";
 import { query } from "@anthropic-ai/claude-code";
 import type { Role } from "../types.js";
 import type { Logger } from "../utils/logger.js";
-import {
-	type DriverCommand,
-	MockToolParser,
-} from "../utils/navigatorCommands.js";
+import { DRIVER_TOOL_NAMES, driverMcpServer } from "../utils/mcpServers.js";
 import { AsyncUserMessageStream } from "../utils/streamInput.js";
+
+// New interface for MCP-based driver commands
+export interface DriverCommand {
+	type: "request_review" | "request_guidance";
+	context?: string;
+}
 
 /**
  * Driver agent - implements the plan with navigator feedback
@@ -23,6 +26,8 @@ export class Driver extends EventEmitter {
 	private pendingTexts: string[] = [];
 	private pendingTools: Set<string> = new Set();
 	private pendingToolWaiters: Array<() => void> = [];
+	private driverCommands: DriverCommand[] = [];
+	private toolResults: Map<string, any> = new Map();
 
 	// Optional canUseTool callback for permission-mode gating (SDK dynamic shapes)
 	private canUseTool?: (
@@ -55,6 +60,7 @@ export class Driver extends EventEmitter {
 			  }
 			| { behavior: "deny"; message: string; interrupt?: boolean }
 		>,
+		private mcpServerUrl?: string,
 	) {
 		super();
 		this.canUseTool = _canUseTool;
@@ -115,11 +121,13 @@ export class Driver extends EventEmitter {
 	}
 
 	/**
-	 * Check if messages contain a RequestReview command
+	 * Check if messages contain a RequestReview command (now handled via MCP tools)
+	 * This method will be updated by the orchestration logic to work with MCP tool events
 	 */
-	static hasRequestReview(messages: string[]): DriverCommand | null {
-		const combinedMessage = messages.join("\n");
-		return MockToolParser.parseDriverMessage(combinedMessage);
+	static hasRequestReview(_messages: string[]): DriverCommand | null {
+		// This will be replaced by MCP tool event detection in the orchestration layer
+		// For now, return null since MCP tools handle this communication
+		return null;
 	}
 
 	/**
@@ -150,9 +158,27 @@ export class Driver extends EventEmitter {
 
 	private async ensureStreamingQuery() {
 		if (this.queryIterator) return;
-		const toolsToPass =
+		// Combine standard tools with MCP tools. If 'all' is requested, allow all tools
+		// (built-ins + MCP) by leaving allowedTools undefined.
+		const baseTools =
 			this.allowedTools[0] === "all" ? undefined : this.allowedTools;
+		const toolsToPass: string[] | undefined = baseTools
+			? [...baseTools, ...DRIVER_TOOL_NAMES]
+			: undefined;
+
 		this.inputStream = new AsyncUserMessageStream();
+		const mcpServers = this.mcpServerUrl
+			? { driver: { type: "sse", url: this.mcpServerUrl } as any }
+			: { driver: driverMcpServer };
+		// Log query setup and tool availability
+		try {
+			this.logger.logEvent("DRIVER_QUERY_INIT", {
+				allowedTools: toolsToPass ?? "all",
+				mcpServers,
+				maxTurns: this.maxTurns,
+				hasSystemPrompt: !!this.systemPrompt,
+			});
+		} catch {}
 		this.queryIterator = query({
 			// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK prompt interface expects AsyncIterable
 			prompt: this.inputStream as any,
@@ -160,6 +186,7 @@ export class Driver extends EventEmitter {
 				cwd: this.projectPath,
 				appendSystemPrompt: this.systemPrompt,
 				allowedTools: toolsToPass,
+				mcpServers,
 				permissionMode: "default",
 				maxTurns: this.maxTurns,
 				includePartialMessages: true,
@@ -238,6 +265,13 @@ export class Driver extends EventEmitter {
 										id: toolUseId,
 										tool: item.name,
 									});
+									// Store MCP tool results for driver communication
+									if (item.name.startsWith("mcp__driver__")) {
+										this.toolResults.set(toolUseId, {
+											toolName: item.name,
+											input: item.input,
+										});
+									}
 								}
 								if (
 									item.name === "Write" ||
@@ -296,13 +330,10 @@ export class Driver extends EventEmitter {
 									id,
 								});
 							}
-							let toForward = consolidatedFwd || consolidatedUI;
+							const toForward = consolidatedFwd || consolidatedUI;
 							if (toForward) {
 								// Add a small directive to encourage verification on the navigator side when edits occurred
-								if (modifiedFiles.length > 0) {
-									const filesList = modifiedFiles.join(", ");
-									toForward += `\n[VERIFY] Read ${filesList} then respond with {{Nod message_id="${id}" comment="verified ${filesList}"}}`;
-								}
+								// Legacy Nod tag removed; navigator responds via MCP tools only
 								this.pendingTexts.push(
 									`[[MSG id=${id}]]\n${toForward}\n[[END_MSG]]`,
 								);
@@ -320,6 +351,31 @@ export class Driver extends EventEmitter {
 					if (Array.isArray(ucontent)) {
 						for (const item of ucontent) {
 							if (item.type === "tool_result") {
+								// Log tool_result errors (e.g., missing tools)
+								try {
+									const anyItem: any = item as any;
+									const isErr = (anyItem.is_error ?? anyItem.isError) === true;
+									let errText: string | undefined =
+										typeof anyItem.text === "string" ? anyItem.text : undefined;
+									if (!errText && Array.isArray(anyItem.content)) {
+										const firstText = anyItem.content.find(
+											(c: any) =>
+												c?.type === "text" && typeof c.text === "string",
+										);
+										if (firstText) errText = firstText.text;
+									}
+									if (
+										isErr ||
+										(errText &&
+											/no such tool available|session not found/i.test(errText))
+									) {
+										this.logger.logEvent("DRIVER_TOOL_RESULT_ERROR", {
+											isError: isErr,
+											text: errText,
+											tool_use_id: anyItem.tool_use_id,
+										});
+									}
+								} catch {}
 								// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK tool_result item structure
 								const tid = (item as any).tool_use_id;
 								if (tid && this.pendingTools.has(tid)) {
@@ -332,6 +388,10 @@ export class Driver extends EventEmitter {
 						}
 						if (this.pendingTools.size === 0) {
 							this.resolvePendingToolWaiters();
+
+							// Process MCP driver commands when tools complete
+							this.processDriverCommands();
+
 							// Send intermediate batch when all tools complete to improve navigator responsiveness
 							if (this.pendingTexts.length > 0) {
 								const batch = this.pendingTexts.slice();
@@ -347,6 +407,9 @@ export class Driver extends EventEmitter {
 						}
 					}
 				} else if (message.type === "result") {
+					// Process MCP driver commands on final result
+					this.processDriverCommands();
+
 					const batch = this.pendingTexts.slice();
 					this.pendingTexts = [];
 					const resolver = this.batchResolvers.shift();
@@ -398,6 +461,65 @@ export class Driver extends EventEmitter {
 				resolve();
 			});
 		});
+	}
+
+	/**
+	 * Process MCP driver commands from tool results
+	 */
+	private processDriverCommands(): void {
+		for (const [toolId, toolData] of this.toolResults) {
+			if (this.pendingTools.has(toolId)) continue; // Wait for tool_result
+
+			const cmd = this.convertMcpToolToDriverCommand(
+				toolData.toolName,
+				toolData.input,
+			);
+			if (cmd) {
+				this.driverCommands.push(cmd);
+				this.logger.logEvent("DRIVER_MCP_COMMAND", {
+					type: cmd.type,
+					context: cmd.context,
+				});
+			}
+		}
+		// Clear processed tool results
+		for (const toolId of this.toolResults.keys()) {
+			if (!this.pendingTools.has(toolId)) {
+				this.toolResults.delete(toolId);
+			}
+		}
+	}
+
+	/**
+	 * Convert MCP tool call to DriverCommand
+	 */
+	private convertMcpToolToDriverCommand(
+		toolName: string,
+		input: any,
+	): DriverCommand | null {
+		switch (toolName) {
+			case "mcp__driver__driverRequestReview":
+				return {
+					type: "request_review",
+					context: input.context,
+				};
+			case "mcp__driver__driverRequestGuidance":
+				return {
+					type: "request_guidance",
+					context: input.context,
+				};
+			default:
+				return null;
+		}
+	}
+
+	/**
+	 * Get and clear any pending driver commands (for orchestration layer)
+	 */
+	public getAndClearDriverCommands(): DriverCommand[] {
+		const commands = this.driverCommands.slice();
+		this.driverCommands = [];
+		return commands;
 	}
 
 	public async stop(): Promise<void> {

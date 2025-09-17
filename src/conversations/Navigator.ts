@@ -1,12 +1,27 @@
 import { EventEmitter } from "node:events";
+import path from "node:path";
 import { query } from "@anthropic-ai/claude-code";
 import type { Role } from "../types.js";
 import type { Logger } from "../utils/logger.js";
 import {
-	MockToolParser,
-	type NavigatorCommand,
-} from "../utils/navigatorCommands.js";
+	NAVIGATOR_TOOL_NAMES,
+	navigatorMcpServer,
+} from "../utils/mcpServers.js";
 import { AsyncUserMessageStream } from "../utils/streamInput.js";
+
+// New interfaces for MCP-based communication
+export interface NavigatorCommand {
+	type:
+		| "code_review"
+		| "complete"
+		| "approve"
+		| "approve_always"
+		| "deny"
+		| "feedback";
+	comment?: string;
+	summary?: string;
+	pass?: boolean; // For CodeReview: true = passing (ending), false = needs work (continue)
+}
 
 /**
  * Navigator agent - monitors driver implementation and provides feedback
@@ -18,10 +33,15 @@ export class Navigator extends EventEmitter {
 	private queryIterator: any = null;
 	private processingLoopStarted = false;
 	private batchResolvers: Array<(cmds: NavigatorCommand[]) => void> = [];
-	private pendingFullText: string[] = [];
+	private pendingCommands: NavigatorCommand[] = [];
 	private pendingTools: Set<string> = new Set();
 	private pendingToolWaiters: Array<() => void> = [];
-	private permissionResolvers: Array<(text: string) => void> = [];
+	private permissionResolvers: Array<(result: any) => void> = [];
+	private toolResults: Map<string, any> = new Map();
+
+	// Track permission-approval display state to avoid duplicate decisions
+	private inPermissionApproval = false;
+	private permissionDecisionShown = false;
 
 	constructor(
 		private systemPrompt: string,
@@ -29,6 +49,7 @@ export class Navigator extends EventEmitter {
 		private maxTurns: number,
 		private projectPath: string,
 		private logger: Logger,
+		private mcpServerUrl?: string,
 	) {
 		super();
 	}
@@ -81,17 +102,19 @@ This is YOUR plan for "${this.originalTask}":
 
 ${this.plan}
 
-I am now requesting a review of my implementation progress below. Evaluate and respond with exactly one tag:
-- {{CodeReview comment="assessment" pass="true|false"}}
-- {{Complete summary="what was accomplished"}}  (only if pass=true and the task is truly complete)
+I am now requesting a review of my implementation progress below. Evaluate and respond with exactly one MCP tool call:
+- Use mcp__navigator__navigatorCodeReview with comment="assessment" and pass=true/false
+- Use mcp__navigator__navigatorComplete with summary="what was accomplished" (only if the task is truly complete)
 
 Here is my update for review: ${driverMessage}
 
-STRICT OUTPUT: EXACTLY ONE tag from the list above. No prose outside the tag.`;
+CRITICAL: Respond ONLY with a single MCP tool call. No text outside the tool call.`;
 				await this.waitForNoPendingTools();
 				this.inputStream?.pushText(prompt);
 			} else {
-				const prompt = `${driverMessage}\n\nSTRICT OUTPUT: EXACTLY ONE tag: {{CodeReview ...}} | {{Complete ...}}. No prose outside the tag.`;
+				const prompt = `${driverMessage}
+
+CRITICAL: Respond with exactly one MCP tool call: mcp__navigator__navigatorCodeReview OR mcp__navigator__navigatorComplete. No text outside the tool call.`;
 				await this.waitForNoPendingTools();
 				this.inputStream?.pushText(prompt);
 			}
@@ -136,18 +159,86 @@ STRICT OUTPUT: EXACTLY ONE tag from the list above. No prose outside the tag.`;
 
 	private async ensureStreamingQuery() {
 		if (this.queryIterator) return;
-		const toolsToPass =
+		// Combine standard tools with MCP tools
+		const baseTools =
 			this.allowedTools[0] === "all" ? undefined : this.allowedTools;
+		const toolsToPass = baseTools
+			? Array.from(new Set<string>([...baseTools, ...NAVIGATOR_TOOL_NAMES]))
+			: [...NAVIGATOR_TOOL_NAMES];
+
 		this.inputStream = new AsyncUserMessageStream();
+		const mcpServers = this.mcpServerUrl
+			? { navigator: { type: "sse", url: this.mcpServerUrl } as any }
+			: { navigator: navigatorMcpServer };
+		const disallowedTools = ["Write", "Edit", "MultiEdit"];
+
+		// Log query setup and tool availability
+		try {
+			this.logger.logEvent("NAVIGATOR_QUERY_INIT", {
+				allowedTools: toolsToPass,
+				disallowedTools,
+				mcpServers,
+				maxTurns: this.maxTurns,
+				hasSystemPrompt: !!this.systemPrompt,
+			});
+		} catch {}
+
+		// Silent gating: allow only pre-approved tools; deny others without emitting messages
+		const navCanUseTool = async (
+			toolName: string,
+			input: Record<string, unknown>,
+		) => {
+			try {
+				// Deny any write attempts silently
+				if (
+					toolName === "Write" ||
+					toolName === "Edit" ||
+					toolName === "MultiEdit"
+				) {
+					return { behavior: "deny" as const, message: "", interrupt: false };
+				}
+				// Read must target a file within the repo (silent deny otherwise)
+				if (toolName === "Read") {
+					const fp = String(
+						(input as any)?.file_path ?? (input as any)?.path ?? "",
+					);
+					if (!fp)
+						return { behavior: "deny" as const, message: "", interrupt: false };
+					if (fp.startsWith("/dev/null"))
+						return { behavior: "deny" as const, message: "", interrupt: false };
+					const abs = path.isAbsolute(fp)
+						? fp
+						: path.resolve(this.projectPath, fp);
+					const normalizedProject = path.resolve(this.projectPath) + path.sep;
+					const normalizedAbs = path.resolve(abs) + path.sep;
+					if (!normalizedAbs.startsWith(normalizedProject))
+						return { behavior: "deny" as const, message: "", interrupt: false };
+				}
+				// Bash only for git diff/status/show (silent deny otherwise)
+				if (toolName === "Bash") {
+					const cmd = String((input as any)?.command ?? "").trim();
+					if (/[;&|`$<>]/.test(cmd))
+						return { behavior: "deny" as const, message: "", interrupt: false };
+					if (!/^(git\s+(diff|status|show)\b)/.test(cmd))
+						return { behavior: "deny" as const, message: "", interrupt: false };
+				}
+			} catch {}
+			return { behavior: "allow" as const, updatedInput: input };
+		};
+
 		this.queryIterator = query({
 			prompt: this.inputStream,
 			options: {
 				cwd: this.projectPath,
 				appendSystemPrompt: this.systemPrompt,
 				allowedTools: toolsToPass,
+				mcpServers,
+				disallowedTools,
 				permissionMode: "default",
 				maxTurns: this.maxTurns,
 				includePartialMessages: true,
+				// biome-ignore lint/suspicious/noExplicitAny: SDK signature
+				canUseTool: navCanUseTool as any,
 			},
 		});
 
@@ -172,66 +263,84 @@ STRICT OUTPUT: EXACTLY ONE tag from the list above. No prose outside the tag.`;
 		comment?: string; // decision note
 		feedback?: string; // optional actionable guidance
 	}> {
-		// Build a strict prompt: exactly one decision tag; optionally one feedback tag
+		// Build a strict prompt: exactly one decision MCP tool call; optionally one feedback MCP tool call
 		const toolDetails = `Tool: ${toolName}\nInput: ${JSON.stringify(input, null, 2)}`;
-		const strict = `I ask that you review a request for making an edit.\n\nMy actions transcript (since last approval):\n${driverTranscript}\n\n${toolDetails}\n\nRespond with EXACTLY ONE decision tag, and optionally ONE feedback tag.\n\nDecision (choose exactly one):\n- {{Approve comment="short reason"}}\n- {{ApproveAlways comment="short reason"}}\n- {{Deny comment="short reason"}}\n\nOptional feedback (at most one, only if specific and helpful):\n- {{Feedback comment="one short actionable suggestion"}}`;
+		const strictCore = `Respond with EXACTLY ONE decision MCP tool call, and optionally ONE feedback MCP tool call.\n\nDecision (choose exactly one):\n- mcp__navigator__navigatorApprove with comment="short reason"\n- mcp__navigator__navigatorApproveAlways with comment="short reason"\n- mcp__navigator__navigatorDeny with comment="short reason"\n\nOptional feedback (at most one, only if specific and helpful):\n- mcp__navigator__navigatorFeedback with comment="one short actionable suggestion"`;
 
-		let merged = "";
+		// If this is the first interaction, include plan/task context inline
+		const header =
+			!this.sessionId && this.plan && this.originalTask
+				? `[CONTEXT] You are the navigator. Treat me as the human developer you’re pairing with.\nTask: ${this.originalTask}\nPlan:\n${this.plan}\n\nWhen I ask for permission to edit files, respond only with MCP decision tools as instructed below. Do not write prose.\n\n[PERMISSION REQUEST]\nMy actions transcript (since last approval):\n${driverTranscript}\n\n${toolDetails}\n\n${strictCore}`
+				: `[PERMISSION REQUEST]\nMy actions transcript (since last approval):\n${driverTranscript}\n\n${toolDetails}\n\n${strictCore}`;
+
 		try {
+			this.inPermissionApproval = true;
+			this.permissionDecisionShown = false;
 			await this.ensureStreamingQuery();
-			this.inputStream?.pushText(strict);
-			merged = await new Promise<string>((resolve) => {
-				this.permissionResolvers.push(resolve);
-			});
+			await this.waitForNoPendingTools();
+			this.inputStream?.pushText(header);
+			// Wait for the next result batch and extract commands produced in this turn
+			const result = await this.waitForPermissionDecision();
+			// Extract decision and feedback from MCP tool results
+			let decision: {
+				type: "approve" | "approve_always" | "deny";
+				comment?: string;
+			} | null = null;
+			let feedback: string | undefined;
+			if (result?.commands) {
+				for (const cmd of result.commands) {
+					if (cmd.type === "approve") {
+						decision = { type: "approve", comment: cmd.comment };
+					} else if (cmd.type === "approve_always") {
+						decision = { type: "approve_always", comment: cmd.comment };
+					} else if (cmd.type === "deny") {
+						decision = { type: "deny", comment: cmd.comment };
+					} else if (cmd.type === "feedback") {
+						feedback = cmd.comment;
+					}
+				}
+			}
+
+			// Do not emit here; feedback bubble will be emitted via processMessages from the tool result
+
+			return {
+				allow:
+					decision?.type === "approve" || decision?.type === "approve_always",
+				alwaysAllow: decision?.type === "approve_always",
+				updatedInput: input,
+				comment: decision?.comment,
+				feedback,
+			};
 		} catch (err) {
 			this.logger.logEvent("NAVIGATOR_PERMISSION_REVIEW_ERROR", {
 				error: err instanceof Error ? err.message : String(err),
 			});
+			return {
+				allow: false,
+				updatedInput: input,
+				comment: "Navigator failed to decide",
+			};
+		} finally {
+			this.inPermissionApproval = false;
+			this.permissionDecisionShown = false;
 		}
+	}
 
-		// Map CodeReview (pass=true/false) to Approve/Deny as a fallback
-		const codeReview = Navigator.parseOptionalCodeReview(merged);
-		let decision = Navigator.parseApprovalTag(merged);
-		const feedback = Navigator.parseOptionalFeedback(merged);
-		if (!decision && codeReview) {
-			decision = codeReview.pass
-				? { type: "approve", comment: codeReview.comment }
-				: { type: "deny", comment: codeReview.comment };
-		}
-
-		// Emit a friendly, non-tag display line summarizing the decision
-		try {
-			const displayText = !decision
-				? "⚠️ Permission decision not recognized"
-				: decision.type === "deny"
-					? `⛔ Permission denied: ${decision.comment || "no reason provided"}`
-					: decision.type === "approve_always"
-						? `✅ Permission approved (always): ${decision.comment || ""}`
-						: `✅ Permission approved: ${decision.comment || ""}`;
-			this.emit("message", {
-				role: "assistant",
-				content: displayText,
-				sessionRole: "navigator" as Role,
-				timestamp: new Date(),
-			});
-			if (feedback && feedback.trim().length > 0) {
-				this.emit("message", {
-					role: "assistant",
-					content: `💡 Feedback: ${feedback.trim()}`,
-					sessionRole: "navigator" as Role,
-					timestamp: new Date(),
+	private waitForPermissionDecision(
+		timeoutMs = 15000,
+	): Promise<{ commands: NavigatorCommand[] }> {
+		return new Promise((resolve) => {
+			const timer = setTimeout(() => {
+				this.logger.logEvent("NAVIGATOR_PERMISSION_DECISION_TIMEOUT", {
+					pendingCount: this.pendingTools.size,
 				});
-			}
-		} catch {}
-
-		return {
-			allow:
-				decision?.type === "approve" || decision?.type === "approve_always",
-			alwaysAllow: decision?.type === "approve_always",
-			updatedInput: input,
-			comment: decision?.comment,
-			feedback,
-		};
+				resolve({ commands: this.pendingCommands.splice(0) });
+			}, timeoutMs);
+			this.permissionResolvers.push((result) => {
+				clearTimeout(timer);
+				resolve(result);
+			});
+		});
 	}
 
 	/**
@@ -239,63 +348,36 @@ STRICT OUTPUT: EXACTLY ONE tag from the list above. No prose outside the tag.`;
 	 */
 	public async provideGuidance(driverMessage: string): Promise<string | null> {
 		await this.ensureStreamingQuery();
-		const prompt = `You are the navigator. Provide ONE short, actionable suggestion to help me proceed.\n\nMy update:\n${driverMessage}\n\nSTRICT: Respond with exactly ONE tag: {{Feedback comment="one short actionable suggestion"}}`;
+		const prompt = `You are the navigator. Provide ONE short, actionable suggestion to help me proceed.\n\nMy update:\n${driverMessage}\n\nCRITICAL: Respond with exactly ONE MCP tool call: mcp__navigator__navigatorFeedback with comment="one short actionable suggestion"`;
 		this.inputStream?.pushText(prompt);
-		let merged = "";
+		let result: any = null;
 		try {
 			await this.waitForNoPendingTools();
 			const cmds = await this.waitForBatchCommands();
-			// Also merge any raw text accumulated in this batch
-			merged = (cmds && Array.isArray(cmds) ? "" : "").toString();
+			result = { commands: cmds };
 		} catch {}
-		const fb = Navigator.parseOptionalFeedback(merged)?.trim();
-		if (fb && fb.length > 0) {
+
+		// Extract feedback from MCP tool result
+		let feedback: string | undefined;
+		if (result?.commands) {
+			for (const cmd of result.commands) {
+				if (cmd.type === "feedback") {
+					feedback = cmd.comment;
+					break;
+				}
+			}
+		}
+
+		if (feedback && feedback.trim().length > 0) {
 			this.emit("message", {
 				role: "assistant",
-				content: `💡 Guidance: ${fb}`,
+				content: `💡 Guidance: ${feedback.trim()}`,
 				sessionRole: "navigator" as Role,
 				timestamp: new Date(),
 			});
-			return fb;
+			return feedback.trim();
 		}
 		return null;
-	}
-
-	private static parseApprovalTag(
-		text: string,
-	): { type: "approve" | "approve_always" | "deny"; comment?: string } | null {
-		if (!text) return null;
-		const m = text.match(/{{\s*(ApproveAlways|Approve|Deny)([^}]*)}}/i);
-		if (!m) return null;
-		let type: "approve" | "approve_always" | "deny" = "approve";
-		const tag = m[1].toLowerCase();
-		if (tag === "approvealways") type = "approve_always";
-		else if (tag === "approve") type = "approve";
-		else type = "deny";
-		const attrs = m[2] || "";
-		const cm = attrs.match(/comment\s*=\s*"([\s\S]*?)"/i);
-		const comment = cm ? cm[1] : undefined;
-		return { type, comment };
-	}
-
-	private static parseOptionalFeedback(text: string): string | undefined {
-		if (!text) return undefined;
-		const m = text.match(/{{\s*Feedback\s+([^}]*)}}/i);
-		if (!m) return undefined;
-		const attrs = m[1] || "";
-		const cm = attrs.match(/comment\s*=\s*"([\s\S]*?)"/i);
-		return cm ? cm[1] : undefined;
-	}
-
-	private static parseOptionalCodeReview(
-		text: string,
-	): { pass: boolean; comment?: string } | null {
-		if (!text) return null;
-		const m = text.match(
-			/{{\s*CodeReview(?:\s+comment="([\s\S]*?)")?(?:\s+pass="(true|false)")?\s*}}/i,
-		);
-		if (!m) return null;
-		return { pass: m[2] === "true", comment: m[1] };
 	}
 
 	private async processMessages() {
@@ -319,16 +401,32 @@ STRICT OUTPUT: EXACTLY ONE tag from the list above. No prose outside the tag.`;
 				if (message.type === "assistant" && message.message?.content) {
 					const content = message.message.content;
 					if (Array.isArray(content)) {
-						let fullText = "";
+						let _fullText = "";
 						for (const item of content) {
 							if (item.type === "text") {
-								fullText += `${item.text}\n`;
+								// Do not emit free-form navigator text; tools only
+								_fullText += `${item.text}\n`;
 							} else if (item.type === "tool_use") {
-								this.emit("tool_use", {
-									role: "navigator" as Role,
-									tool: item.name,
-									input: item.input,
-								});
+								const tname = item.name;
+								const isDecision = Navigator.isDecisionTool(tname);
+								let allowEmit = true;
+								if (this.inPermissionApproval) {
+									if (isDecision) {
+										// Only emit the first decision tool line per approval window
+										allowEmit = !this.permissionDecisionShown;
+										this.permissionDecisionShown = true;
+									} else if (tname === "mcp__navigator__navigatorCodeReview") {
+										// Do not emit CodeReview during permission approvals
+										allowEmit = false;
+									}
+								}
+								if (allowEmit) {
+									this.emit("tool_use", {
+										role: "navigator" as Role,
+										tool: tname,
+										input: item.input,
+									});
+								}
 								// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK tool_use item structure
 								const toolUseId = (item as any).id || (item as any).tool_use_id;
 								if (toolUseId) {
@@ -337,26 +435,38 @@ STRICT OUTPUT: EXACTLY ONE tag from the list above. No prose outside the tag.`;
 										id: toolUseId,
 										tool: item.name,
 									});
+									// Store MCP tool results
+									this.toolResults.set(toolUseId, {
+										toolName: tname,
+										input: item.input,
+									});
 								}
 							}
 						}
-						const consolidated = fullText.trim();
-						if (consolidated) {
-							this.pendingFullText.push(consolidated);
-							const allCommands = MockToolParser.parseAllCommands(consolidated);
-							if (allCommands.length > 0) {
-								for (const cmd of allCommands) {
+						// Process MCP tool calls to create NavigatorCommands
+						for (const [toolId, toolData] of this.toolResults) {
+							if (this.pendingTools.has(toolId)) continue; // Wait for tool_result
+
+							const cmd = this.convertMcpToolToCommand(
+								toolData.toolName,
+								toolData.input,
+							);
+							if (cmd) {
+								this.pendingCommands.push(cmd);
+								// Only surface explicit guidance as a navigator bubble; approvals/denials/code reviews are shown via tool lines
+								if (cmd.type === "feedback") {
 									this.emit("message", {
 										role: "assistant",
-										content: MockToolParser.formatForDisplay(cmd),
+										content: this.formatCommandForDisplay(cmd),
 										sessionRole: "navigator" as Role,
 										timestamp: new Date(),
 										commandType: cmd.type,
 									});
 								}
 							}
-							// No stray text collection in review-only mode
 						}
+
+						// No fallback text parsing — MCP tools only
 					}
 				} else if (
 					message.type === "user" &&
@@ -368,6 +478,31 @@ STRICT OUTPUT: EXACTLY ONE tag from the list above. No prose outside the tag.`;
 					if (Array.isArray(ucontent)) {
 						for (const item of ucontent) {
 							if (item.type === "tool_result") {
+								// Log tool_result errors (e.g., missing tools)
+								try {
+									const anyItem: any = item as any;
+									const isErr = (anyItem.is_error ?? anyItem.isError) === true;
+									let errText: string | undefined =
+										typeof anyItem.text === "string" ? anyItem.text : undefined;
+									if (!errText && Array.isArray(anyItem.content)) {
+										const firstText = anyItem.content.find(
+											(c: any) =>
+												c?.type === "text" && typeof c.text === "string",
+										);
+										if (firstText) errText = firstText.text;
+									}
+									if (
+										isErr ||
+										(errText &&
+											/no such tool available|session not found/i.test(errText))
+									) {
+										this.logger.logEvent("NAVIGATOR_TOOL_RESULT_ERROR", {
+											isError: isErr,
+											text: errText,
+											tool_use_id: anyItem.tool_use_id,
+										});
+									}
+								} catch {}
 								// biome-ignore lint/suspicious/noExplicitAny: SDK message shape
 								const tid = (item as any).tool_use_id;
 								if (tid && this.pendingTools.has(tid)) {
@@ -375,24 +510,51 @@ STRICT OUTPUT: EXACTLY ONE tag from the list above. No prose outside the tag.`;
 									this.logger.logEvent("NAVIGATOR_TOOL_RESULT_OBSERVED", {
 										id: tid,
 									});
+									// Convert this completed tool call into a NavigatorCommand now
+									const tdata = this.toolResults.get(tid);
+									if (tdata) {
+										const cmd = this.convertMcpToolToCommand(
+											tdata.toolName,
+											tdata.input,
+										);
+										if (cmd) {
+											this.pendingCommands.push(cmd);
+											if (cmd.type === "feedback") {
+												this.emit("message", {
+													role: "assistant",
+													content: this.formatCommandForDisplay(cmd),
+													sessionRole: "navigator" as Role,
+													timestamp: new Date(),
+													commandType: cmd.type,
+												});
+											}
+										}
+										// Once processed, drop the stored tool data
+										this.toolResults.delete(tid);
+									}
 								}
 							}
 						}
 						if (this.pendingTools.size === 0) this.resolvePendingToolWaiters();
 					}
 				} else if (message.type === "result") {
-					const merged = this.pendingFullText.join("\n");
-					this.pendingFullText = [];
-					// Permission decision path takes precedence
+					// Permission decision path takes precedence - return MCP tool results
 					if (this.permissionResolvers.length > 0) {
 						const presolver = this.permissionResolvers.shift();
-						if (presolver) presolver(merged);
+						if (presolver) presolver({ commands: this.pendingCommands });
 						this.logger.logEvent("NAVIGATOR_PERMISSION_DECISION_BATCH", {
-							length: merged.length,
+							commandCount: this.pendingCommands.length,
 						});
+						this.pendingCommands = [];
+						this.toolResults.clear();
 						continue;
 					}
-					const cmds = MockToolParser.parseAllCommands(merged) || [];
+
+					// Regular command processing - use MCP commands
+					const cmds =
+						this.pendingCommands.length > 0 ? this.pendingCommands : [];
+					this.pendingCommands = [];
+					this.toolResults.clear();
 					// Review-only mode: no stray text synthesis
 					const resolver = this.batchResolvers.shift();
 					if (resolver) resolver(cmds);
@@ -439,6 +601,57 @@ STRICT OUTPUT: EXACTLY ONE tag from the list above. No prose outside the tag.`;
 				resolve();
 			});
 		});
+	}
+
+	/**
+	 * Convert MCP tool call to NavigatorCommand
+	 */
+	private convertMcpToolToCommand(
+		toolName: string,
+		input: any,
+	): NavigatorCommand | null {
+		switch (toolName) {
+			case "mcp__navigator__navigatorFeedback":
+				return { type: "feedback", comment: input.comment };
+			case "mcp__navigator__navigatorCodeReview":
+				return {
+					type: "code_review",
+					comment: input.comment,
+					pass: input.pass,
+				};
+			case "mcp__navigator__navigatorComplete":
+				return { type: "complete", summary: input.summary };
+			case "mcp__navigator__navigatorApprove":
+				return { type: "approve", comment: input.comment };
+			case "mcp__navigator__navigatorApproveAlways":
+				return { type: "approve_always", comment: input.comment };
+			case "mcp__navigator__navigatorDeny":
+				return { type: "deny", comment: input.comment };
+			default:
+				return null;
+		}
+	}
+
+	/**
+	 * Format NavigatorCommand for display
+	 */
+	private formatCommandForDisplay(command: NavigatorCommand): string {
+		// Only feedback becomes a navigator bubble; decisions are shown as system lines
+		if (command.type === "feedback") {
+			return `💡 Guidance: ${command.comment || ""}`;
+		}
+		return "";
+	}
+
+	// No fallback text parsing — MCP tools only
+
+	private static isDecisionTool(name: string): boolean {
+		return (
+			name === "mcp__navigator__navigatorApprove" ||
+			name === "mcp__navigator__navigatorApproveAlways" ||
+			name === "mcp__navigator__navigatorDeny" ||
+			name === "mcp__navigator__navigatorCodeReview"
+		);
 	}
 
 	public async stop(): Promise<void> {

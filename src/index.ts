@@ -10,12 +10,13 @@ import {
 } from "./config.js";
 import { Architect } from "./conversations/Architect.js";
 import { Driver } from "./conversations/Driver.js";
+import type { NavigatorCommand } from "./conversations/Navigator.js";
 import { Navigator } from "./conversations/Navigator.js";
 import { InkDisplayManager } from "./display.js";
+import { type PairMcpServer, startPairMcpServer } from "./mcp/httpServer.js";
 import { displayBanner } from "./utils/banner.js";
 import { type AppConfig, loadConfig, validateConfig } from "./utils/config.js";
 import { Logger } from "./utils/logger.js";
-import type { NavigatorCommand } from "./utils/navigatorCommands.js";
 import {
 	ValidationError,
 	validateAndReadPromptFile,
@@ -37,6 +38,7 @@ class ClaudePairApp {
 	private stopping = false;
 	private appConfig!: AppConfig;
 	private sessionTimer?: NodeJS.Timeout;
+	private mcp?: PairMcpServer;
 	// Removed idle watchdog to minimize UI noise
 	private driverBuffer: string[] = [];
 
@@ -52,23 +54,58 @@ class ClaudePairApp {
 		this.config.initialTask = task;
 
 		this.logger = new Logger("claude-pair-debug.log");
+		const logPath = this.logger.getFilePath();
+		this.logger.logEvent("APP_LOGGING_CONFIG", {
+			level: process.env.LOG_LEVEL || "(disabled)",
+			file: logPath || "(none)",
+			console: !!/^(1|true|yes)$/i.test(process.env.LOG_CONSOLE || ""),
+		});
+	}
+
+	/**
+	 * Start the application
+	 */
+	async start(): Promise<void> {
+		// Initialize display
+		this.display = new InkDisplayManager();
+		this.display.start(this.projectPath, this.task, this.appConfig, () => {
+			this.stopAllAndExit();
+		});
+
+		// Start the single-process HTTP/SSE MCP server (two paths) and wire agents to it
+		this.logger.logEvent("APP_MCP_STARTING", {});
+		this.mcp = await startPairMcpServer(undefined, this.logger);
+		const navUrl = this.mcp.urls.navigator;
+		const drvUrl = this.mcp.urls.driver;
+		this.logger.logEvent("APP_MCP_URLS", { navUrl, drvUrl });
 
 		// Create simple agents
 		this.architect = new Architect(
 			PLANNING_NAVIGATOR_PROMPT,
 			["Read", "Grep", "Glob", "WebSearch", "WebFetch", "TodoWrite", "Bash"],
 			TURN_LIMITS.ARCHITECT,
-			projectPath,
+			this.projectPath,
 			this.logger,
 		);
 
 		this.navigator = new Navigator(
 			MONITORING_NAVIGATOR_PROMPT,
-			// Read-only tool set for visibility without making changes
-			["Read", "Grep", "Glob", "WebSearch", "WebFetch", "Bash", "TodoWrite"],
+			// Read-only tools + Bash(git diff/*, git status/*) and TodoWrite for status
+			[
+				"Read",
+				"Grep",
+				"Glob",
+				"WebSearch",
+				"WebFetch",
+				"Bash(git diff:*)",
+				"Bash(git status:*)",
+				"Bash(git show:*)",
+				"TodoWrite",
+			],
 			this.appConfig.navigatorMaxTurns,
-			projectPath,
+			this.projectPath,
 			this.logger,
+			navUrl,
 		);
 
 		// Permission broker: canUseTool handler wired to Navigator
@@ -151,23 +188,13 @@ class ClaudePairApp {
 			DRIVER_PROMPT,
 			["all"],
 			this.appConfig.driverMaxTurns,
-			projectPath,
+			this.projectPath,
 			this.logger,
 			canUseTool,
+			drvUrl,
 		);
 
 		this.setupEventHandlers();
-	}
-
-	/**
-	 * Start the application
-	 */
-	async start(): Promise<void> {
-		// Initialize display
-		this.display = new InkDisplayManager();
-		this.display.start(this.projectPath, this.task, this.appConfig, () => {
-			this.stopAllAndExit();
-		});
 
 		try {
 			this.logger.logEvent("APP_ARCHITECT_STARTING", {
@@ -266,9 +293,29 @@ class ClaudePairApp {
 					navigatorSessionId: this.navigator.getSessionId(),
 				});
 
-				// Check if driver requested review or guidance in its recent output
-				const driverCommand = Driver.hasRequestReview(driverMessages);
-				const dcType = driverCommand?.type as string | undefined;
+				// Check if driver requested review or guidance via MCP tools
+				const driverCommands = this.driver.getAndClearDriverCommands();
+				const driverCommand =
+					driverCommands.length > 0 ? driverCommands[0] : null;
+				const dcType = driverCommand?.type;
+
+				// Guardrail: if driver text indicates completion intent but no review tool was called, nudge to request review immediately
+				if (!dcType) {
+					const combinedDriverText = (driverMessages || [])
+						.join("\n")
+						.toLowerCase();
+					if (ClaudePairApp.detectsCompletionIntent(combinedDriverText)) {
+						this.display.updateStatus(
+							"Driver indicated completion — prompting to request review…",
+						);
+						this.driver.pushNavigatorFeedback(
+							"It sounds like you consider the implementation complete. Please request a review now by calling the mcp__driver__driverRequestReview tool with a brief context of what you implemented. Do not continue with further edits until the review is returned.",
+						);
+						driverMessages = await this.driver.continueWithFeedback("");
+						continue;
+					}
+				}
+
 				if (dcType === "request_review") {
 					this.logger.logEvent("IMPLEMENTATION_LOOP_REVIEW_REQUESTED", {});
 					const combinedMessage = Driver.combineMessagesForNavigator([
@@ -341,7 +388,7 @@ class ClaudePairApp {
 							while (attempts < 5) {
 								attempts++;
 								const retryResp = await this.navigator.processDriverMessage(
-									"STRICT: Respond with exactly one tag: {{CodeReview ...}} or {{Complete ...}}",
+									"STRICT: Respond with exactly one MCP tool call: mcp__navigator__navigatorCodeReview OR mcp__navigator__navigatorComplete.",
 								);
 								const cmds: NavigatorCommand[] = Array.isArray(retryResp)
 									? retryResp
@@ -402,9 +449,9 @@ class ClaudePairApp {
 						continue; // Next loop
 					}
 
-					// Handle guidance requests
-					const dcType2 = driverCommand?.type as string | undefined;
-					if (dcType2 === "request_guidance") {
+					// biome-ignore lint/suspicious/noExplicitAny: TypeScript flow analysis issue with continue statement
+					// @ts-expect-error - TypeScript doesn't understand that continue prevents this check when dcType is "request_review"
+					if (dcType === "request_guidance") {
 						const combinedMessage = Driver.combineMessagesForNavigator([
 							...this.driverBuffer,
 							...driverMessages,
@@ -447,6 +494,21 @@ class ClaudePairApp {
 		}
 	}
 
+	// Heuristic to detect that the driver believes implementation is complete and intends to request review
+	private static detectsCompletionIntent(text: string): boolean {
+		if (!text) return false;
+		const signals = [
+			"implementation is complete",
+			"i have completed",
+			"finished implementation",
+			"ready for review",
+			"request a review",
+			"should now request a review",
+			"please review my work",
+		];
+		return signals.some((s) => text.includes(s));
+	}
+
 	/**
 	 * Set up event handlers for display
 	 */
@@ -470,6 +532,8 @@ class ClaudePairApp {
 		});
 
 		this.navigator.on("tool_use", ({ tool, input }) => {
+			// Suppress raw tool line for navigatorFeedback; it's shown as a navigator bubble instead
+			if (tool === "mcp__navigator__navigatorFeedback") return;
 			this.display.showToolUse("navigator", tool, input);
 			this.logger.logEvent("NAVIGATOR_TOOL_USE", {
 				tool,
@@ -521,6 +585,9 @@ class ClaudePairApp {
 		this.logger?.close();
 		if (this.sessionTimer) clearTimeout(this.sessionTimer);
 		// No idle timer to clear
+		try {
+			void this.mcp?.close();
+		} catch {}
 	}
 
 	private async stopAllAndExit(): Promise<void> {

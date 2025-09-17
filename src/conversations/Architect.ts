@@ -71,11 +71,11 @@ export class Architect extends EventEmitter {
 					const content = message.message.content;
 
 					if (Array.isArray(content)) {
-						let fullText = "";
+						let _fullText = "";
 
 						for (const item of content) {
 							if (item.type === "text") {
-								fullText += `${item.text}\n`;
+								_fullText += `${item.text}\n`;
 
 								// Emit for display
 								this.emit("message", {
@@ -106,14 +106,7 @@ export class Architect extends EventEmitter {
 							}
 						}
 
-						// Also capture text as fallback if tool not used
-						if (!plan && fullText.trim()) {
-							plan = fullText.trim();
-							this.logger.logEvent("ARCHITECT_PLAN_CREATED", {
-								planLength: plan.length,
-								turnCount,
-							});
-						}
+						// No fallback text capture — plan must be returned via ExitPlanMode tool
 					}
 				}
 			}

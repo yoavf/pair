@@ -20,7 +20,7 @@ const SystemMessage: FC<Props> = React.memo(
 		systemWidth,
 	}) => {
 		const isNavigator = message.sessionRole === "navigator";
-		const text = (message.content || "").trim();
+		const text = String(message.content || "");
 		const isTool =
 			message.role === "system" &&
 			[
@@ -36,16 +36,27 @@ const SystemMessage: FC<Props> = React.memo(
 				"WebFetch",
 			].some((tool) => text.startsWith(tool));
 
+		// Add vertical padding for special decision/request lines
+		const isSpecial =
+			Boolean(message.symbol) ||
+			/^(\s*)(✓|Denied|📋|🔍|❓|Completed|Requested)/.test(text);
+
 		const color = isTool ? "gray" : "white";
 		const widthPct = isNavigator ? `${driverWidth}%` : `${systemWidth}%`;
 
 		return (
-			<Box key={entryKey} justifyContent="flex-start">
+			<Box
+				key={entryKey}
+				justifyContent="flex-start"
+				marginY={isSpecial ? 1 : 0}
+			>
 				<Box flexDirection="column" width={widthPct}>
 					<ToolMessage
 						content={message.content}
 						color={color}
 						sessionRole={message.sessionRole}
+						symbol={message.symbol}
+						symbolColor={message.symbolColor}
 					/>
 				</Box>
 			</Box>
