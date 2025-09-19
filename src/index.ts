@@ -470,7 +470,7 @@ class ClaudePairApp {
 								summary: endSummary || "Implementation finished",
 							});
 							this.display.setPhase("complete");
-							await this.stopAllAndExit();
+							await this.stopAllAndExit(endSummary);
 							return;
 						}
 					} else {
@@ -535,7 +535,7 @@ class ClaudePairApp {
 										summary: endSummary || "Implementation finished",
 									});
 									this.display.setPhase("complete");
-									await this.stopAllAndExit();
+									await this.stopAllAndExit(endSummary);
 									return;
 								}
 								break;
@@ -597,7 +597,7 @@ class ClaudePairApp {
 							reason: endReason || "Session completed by navigator",
 						});
 						this.display.setPhase("complete");
-						await this.stopAllAndExit();
+						await this.stopAllAndExit(endReason);
 						return;
 					}
 
@@ -715,9 +715,12 @@ class ClaudePairApp {
 		} catch {}
 	}
 
-	private async stopAllAndExit(): Promise<void> {
+	private async stopAllAndExit(completionMessage?: string): Promise<void> {
 		if (this.stopping) return;
 		this.stopping = true;
+		if (completionMessage) {
+			this.display.showCompletionMessage(completionMessage);
+		}
 		try {
 			await Promise.allSettled([this.driver.stop(), this.navigator.stop()]);
 		} catch {}

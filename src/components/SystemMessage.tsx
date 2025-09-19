@@ -42,7 +42,7 @@ const SystemMessage: FC<Props> = React.memo(
 			/^(\s*)(✓|Denied|📋|🔍|❓|Completed|Requested)/.test(text);
 
 		const color = isTool ? "gray" : "white";
-		const widthPct = isNavigator ? `${driverWidth}%` : `${systemWidth}%`;
+		const widthChars = isNavigator ? driverWidth : systemWidth;
 
 		// For navigator special lines, avoid adding a blank line before; keep a small space after.
 		const marginTop = isSpecial ? (isNavigator ? 0 : 1) : 0;
@@ -55,7 +55,7 @@ const SystemMessage: FC<Props> = React.memo(
 				marginTop={marginTop}
 				marginBottom={marginBottom}
 			>
-				<Box flexDirection="column" width={widthPct}>
+				<Box flexDirection="column" width={widthChars}>
 					<ToolMessage
 						content={message.content}
 						color={color}

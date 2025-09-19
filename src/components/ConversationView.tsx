@@ -12,9 +12,10 @@ interface Props {
 }
 
 const ConversationView: React.FC<Props> = React.memo(({ messages, phase }) => {
-	// Layout constants
-	const DRIVER_WIDTH = 85; // percent width for bubbles
-	const SYSTEM_WIDTH = 90; // percent width for tool/system lines
+	// Layout constants - max 88 characters per line
+	const MAX_LINE_WIDTH = 88;
+	const DRIVER_WIDTH = 84; // characters for driver messages
+	const SYSTEM_WIDTH = 88; // characters for system messages
 	const SEPARATOR = "-".repeat(60);
 
 	const formatTimestamp = useCallback((timestamp: Date) => {
@@ -25,6 +26,27 @@ const ConversationView: React.FC<Props> = React.memo(({ messages, phase }) => {
 			second: "2-digit",
 		});
 	}, []);
+
+	const formatShortTime = useCallback((timestamp: Date) => {
+		return timestamp.toLocaleTimeString("en-US", {
+			hour12: false,
+			hour: "2-digit",
+			minute: "2-digit",
+		});
+	}, []);
+
+	const shouldShowTimestamp = useCallback(
+		(
+			currentTime: Date,
+			lastDisplayedMinute?: string,
+			isFirstInPhase = false,
+		) => {
+			if (isFirstInPhase) return true;
+			const currentMinute = formatShortTime(currentTime);
+			return currentMinute !== lastDisplayedMinute;
+		},
+		[formatShortTime],
+	);
 
 	const classifyMessages = useCallback((messages: Message[]) => {
 		type Entry =
@@ -65,12 +87,21 @@ const ConversationView: React.FC<Props> = React.memo(({ messages, phase }) => {
 
 		const nodes: React.ReactNode[] = [];
 		let lastRole: "driver" | "navigator" | undefined;
+		let lastDisplayedMinute: string | undefined;
+		let isFirstDriverMessage = true;
+		let isFirstPlanningMessage = true;
+		let hasSeenTransition = false;
 
 		entries.forEach((entry) => {
 			const { message } = entry;
 			const timestamp = formatTimestamp(message.timestamp);
 
 			if (entry.kind === "system") {
+				if (message.content?.includes("Starting pair coding session")) {
+					hasSeenTransition = true;
+					isFirstDriverMessage = true;
+				}
+
 				nodes.push(
 					<SystemMessage
 						key={entry.key}
@@ -92,15 +123,44 @@ const ConversationView: React.FC<Props> = React.memo(({ messages, phase }) => {
 						</Box>,
 					);
 				}
-				const showHeader = lastRole !== "driver";
+
+				const isFirstAfterTransition =
+					hasSeenTransition && isFirstDriverMessage;
+				const isFirstInPlanning = isPlanning && isFirstPlanningMessage;
+				const shouldShowFirst = isFirstAfterTransition || isFirstInPlanning;
+
+				const showTimestamp = shouldShowTimestamp(
+					message.timestamp,
+					lastDisplayedMinute,
+					shouldShowFirst,
+				);
+
+				if (showTimestamp) {
+					const currentMinute = formatShortTime(message.timestamp);
+					nodes.push(
+						<Box
+							key={`${entry.key}-timestamp`}
+							justifyContent="flex-start"
+							marginTop={2}
+							marginBottom={0}
+						>
+							<Text dimColor>{currentMinute}</Text>
+						</Box>,
+					);
+					lastDisplayedMinute = currentMinute;
+				}
+
 				lastRole = "driver";
+				isFirstDriverMessage = false;
+				if (isPlanning) isFirstPlanningMessage = false;
+
 				nodes.push(
 					<DriverMessage
 						key={entry.key}
 						message={message}
 						reactions={[]}
-						showHeader={showHeader}
-						timestamp={timestamp}
+						showTimestamp={false}
+						shortTime=""
 						entryKey={entry.key}
 						driverWidth={DRIVER_WIDTH}
 						separator={SEPARATOR}
@@ -168,7 +228,14 @@ const ConversationView: React.FC<Props> = React.memo(({ messages, phase }) => {
 		});
 
 		return nodes;
-	}, [messages, formatTimestamp, phase, classifyMessages]);
+	}, [
+		messages,
+		formatTimestamp,
+		phase,
+		classifyMessages,
+		formatShortTime,
+		shouldShowTimestamp,
+	]);
 
 	return (
 		<Box flexDirection="column" height="100%" paddingX={1}>

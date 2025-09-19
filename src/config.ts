@@ -22,6 +22,8 @@ ALWAYS end significant work with: "I have completed [what you did]. Please revie
 
 CRITICAL: Do not merely say you will request a review — actually use the mcp__driver__driverRequestReview tool. After you believe implementation is complete, do not continue with further edits, reads, or tests until you have requested review and received the review result.
 
+STOP IMMEDIATELY after calling mcp__driver__driverRequestReview. Do not generate any additional text, explanations, or summaries. The review request ends your turn - wait for my review.
+
 DO NOT consider work finished until I respond with the mcp__navigator__navigatorComplete tool after review.`;
 
 export const MONITORING_NAVIGATOR_PROMPT = `You are the NAVIGATOR in a pair programming session with me. I'll execute the plan and let you know where I'm at, ask for permission to edit files, and request reviews.
@@ -50,7 +52,7 @@ RULES:
 export const TURN_LIMITS = {
 	ARCHITECT: 50, // High limit for plan creation
 	NAVIGATOR: 8, // Navigator code reviews (more headroom for verify steps)
-	DRIVER: 4, // Driver implementation batches (short to interleave with navigator)
+	DRIVER: 10, // Driver implementation batches (increased from 4 to prevent stalling)
 } as const;
 
 export const DEFAULT_PAIR_CONFIG: PairConfig = {

@@ -29,11 +29,11 @@ const ToolMessage: React.FC<Props> = ({
 		: defaultSymbolColor;
 	const pieces: React.ReactElement[] = [];
 	if (sessionRole === "navigator") {
-		// Rightwards arrow with hook before navigator tool results (green + bold)
+		// Threading symbol before navigator tool results
 		pieces.push(
-			<Text key="nav-arrow" color="green" bold>
+			<Text key="nav-arrow" color="white">
 				{" "}
-				↪ {""}
+				⎿ {""}
 			</Text>,
 		);
 	}
@@ -50,12 +50,23 @@ const ToolMessage: React.FC<Props> = ({
 		);
 	}
 
+	const getIndentationForContinuation = () => {
+		if (sessionRole === "navigator") {
+			return "       ";
+		}
+		return "  ";
+	};
+
+	const indentString = getIndentationForContinuation();
+
 	if (dashIndex > 0) {
 		// Has details: "ToolName - details"
 		const toolName = text.substring(0, dashIndex);
-		const details = text.substring(dashIndex);
+		const details = text
+			.substring(dashIndex)
+			.replace(/\n/g, `\n${indentString}`);
 		return (
-			<Text>
+			<Text wrap="wrap">
 				{pieces}
 				<Text color={color} bold>
 					{toolName}
@@ -64,11 +75,10 @@ const ToolMessage: React.FC<Props> = ({
 			</Text>
 		);
 	} else {
-		// No details: allow multi-line content and indent continuation lines for readability
-		// Indent any newline continuations by two spaces
-		const pretty = text.replace(/\n/g, "\n  ");
+		// No details: simple indentation for continuation lines
+		const pretty = text.replace(/\n/g, `\n${indentString}`);
 		return (
-			<Text>
+			<Text wrap="wrap">
 				{pieces}
 				<Text color={color} bold>
 					{pretty}

@@ -30,14 +30,14 @@ export function formatSystemLine(
 			return {
 				content: `Approved${comment ? `: ${comment}` : ""}`,
 				symbol: "✓",
-				symbolColor: "greenBright",
+				symbolColor: "#00ff00",
 			};
 		}
 		if (tool === "mcp__navigator__navigatorDeny") {
 			return {
 				content: `Denied${comment ? `: ${comment}` : ""}`,
 				symbol: "x",
-				symbolColor: "red",
+				symbolColor: "#ff0000",
 			};
 		}
 		if (tool === "mcp__navigator__navigatorCodeReview") {
@@ -51,7 +51,7 @@ export function formatSystemLine(
 			return {
 				content: `Completed${summary ? `: ${summary}` : ""}`,
 				symbol: "⏹",
-				symbolColor: "greenBright",
+				symbolColor: "#00ff00",
 			};
 		}
 	}

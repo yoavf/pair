@@ -162,9 +162,8 @@ export class InkDisplayManager {
 			role: "system",
 			content: "🚀 Starting pair coding session to implement the plan...",
 			timestamp: new Date(),
-			// Attribute the kickoff banner to the driver lane so navigator tool lines
-			// (which render with a green ⤷ arrow) don’t appear visually threaded under it.
 			sessionRole: "driver",
+			symbol: "",
 		};
 		this.appendMessage(message);
 	}
@@ -222,6 +221,9 @@ export class InkDisplayManager {
 					const cmdFull = String(params.command);
 					const cmd = cmdFull.slice(0, 60);
 					content += ` - ${cmd}${cmdFull.length > 60 ? "..." : ""}`;
+				} else if (tool === "BashOutput" && params.bash_id) {
+					content += ` - shell ${params.bash_id}`;
+					if (params.filter) content += ` (filtered: "${params.filter}")`;
 				} else if (tool === "Grep" && params.pattern) {
 					content += ` - pattern: "${params.pattern}"`;
 					if (params.path) content += ` in ${toRel(params.path)}`;
@@ -300,6 +302,16 @@ export class InkDisplayManager {
 
 	showError(error: string) {
 		this.updateStatus(`❌ ERROR: ${error}`);
+	}
+
+	showCompletionMessage(summary?: string) {
+		const message = summary
+			? `✅ Task Complete!\n\n${summary}`
+			: "✅ Task Complete! Navigator has marked the implementation as finished.";
+
+		console.log("\n" + "=".repeat(60));
+		console.log(message);
+		console.log("=".repeat(60) + "\n");
 	}
 
 	cleanup() {

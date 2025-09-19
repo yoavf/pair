@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatSystemLine } from "../src/utils/systemLine.js";
+import { formatSystemLine } from "../../src/utils/systemLine.js";
 
 describe("formatSystemLine", () => {
   it("formats navigator approve with green checkmark", () => {
@@ -7,7 +7,7 @@ describe("formatSystemLine", () => {
     expect(out).not.toBeNull();
     expect(out!.content).toBe("Approved: Looks good");
     expect(out!.symbol).toBe("✓");
-    expect(out!.symbolColor).toBe("greenBright");
+    expect(out!.symbolColor).toBe("#00ff00");
   });
 
   it("formats navigator deny with red x", () => {
@@ -15,7 +15,7 @@ describe("formatSystemLine", () => {
     expect(out).not.toBeNull();
     expect(out!.content).toBe("Denied: Missing tests");
     expect(out!.symbol).toBe("x");
-    expect(out!.symbolColor).toBe("red");
+    expect(out!.symbolColor).toBe("#ff0000");
   });
 
   it("formats navigator code review with cyan bullet", () => {
@@ -31,7 +31,7 @@ describe("formatSystemLine", () => {
     expect(out).not.toBeNull();
     expect(out!.content).toBe("Completed: All tasks completed");
     expect(out!.symbol).toBe("⏹");
-    expect(out!.symbolColor).toBe("greenBright");
+    expect(out!.symbolColor).toBe("#00ff00");
   });
 
   it("formats driver request review without leading dot (suppressed symbol)", () => {
