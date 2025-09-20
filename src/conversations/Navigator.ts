@@ -280,6 +280,14 @@ Only mcp__navigator__navigatorCodeReview OR mcp__navigator__navigatorComplete. N
 
 			const decision = this.extractPermissionDecision(result.commands);
 
+			if (decision.type === "approve") {
+				return {
+					allowed: true,
+					updatedInput: request.input,
+					comment: decision.comment,
+				};
+			}
+
 			if (decision.type === "deny") {
 				return {
 					allowed: false,

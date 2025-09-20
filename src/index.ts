@@ -237,11 +237,7 @@ class ClaudePairApp {
 
 			this.display?.showTransfer("navigator", "driver", "Decision");
 			this.display?.updateStatus(
-				result.allowed
-					? result.alwaysAllow
-						? `Approved (always): ${toolName}`
-						: `Approved: ${toolName}`
-					: `Denied: ${toolName}`,
+				result.allowed ? `Approved: ${toolName}` : `Denied: ${toolName}`,
 			);
 			this.logger.logEvent("PERMISSION_DECISION", {
 				toolName,
@@ -255,14 +251,9 @@ class ClaudePairApp {
 				};
 			}
 
-			const updatedPermissions = result.alwaysAllow
-				? options?.suggestions
-				: undefined;
 			return {
 				behavior: "allow",
 				updatedInput: result.updatedInput,
-				// biome-ignore lint/suspicious/noExplicitAny: SDK will validate structure
-				updatedPermissions: updatedPermissions as any,
 			};
 		};
 

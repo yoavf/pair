@@ -12,7 +12,6 @@ export interface PermissionApproval {
 	allowed: true;
 	updatedInput: Record<string, unknown>;
 	comment?: string;
-	alwaysAllow?: boolean;
 }
 
 export interface PermissionDenial {

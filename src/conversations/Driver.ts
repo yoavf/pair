@@ -292,7 +292,7 @@ export class Driver extends EventEmitter {
 								if (item.name === "Bash" && item.input?.command) {
 									lastBashCmd = String(item.input.command);
 								}
-								// Include tool summary in forwarded text (except approved edit tools)
+								// Include tool summary in forwarded text (except already approved edit tools)
 								const isApprovedEditTool =
 									item.name === "Write" ||
 									item.name === "Edit" ||
