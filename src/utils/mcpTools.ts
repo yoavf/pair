@@ -8,6 +8,17 @@
 import { tool } from "@anthropic-ai/claude-code";
 import { z } from "zod";
 
+/**
+ * Creates a no-op handler for communication-only MCP tools.
+ *
+ * Navigator tools are purely communicative - the tool call itself carries
+ * the semantic meaning (e.g., "I approve this" or "I deny this"), and the
+ * empty content array indicates successful communication without user-visible output.
+ *
+ * Driver tools, in contrast, return descriptive content for user feedback.
+ */
+const createNoOpHandler = () => async (_args: any) => ({ content: [] });
+
 // Navigator tool definitions
 export const navigatorCodeReview = tool(
 	"navigatorCodeReview",
@@ -20,9 +31,7 @@ export const navigatorCodeReview = tool(
 				"Whether the implementation passes review (true) or needs more work (false)",
 			),
 	},
-	async (_args) => {
-		return { content: [] };
-	},
+	createNoOpHandler(),
 );
 
 export const navigatorComplete = tool(
@@ -31,9 +40,7 @@ export const navigatorComplete = tool(
 	{
 		summary: z.string().describe("Summary of what was accomplished"),
 	},
-	async (_args) => {
-		return { content: [] };
-	},
+	createNoOpHandler(),
 );
 
 export const navigatorApprove = tool(
@@ -42,9 +49,7 @@ export const navigatorApprove = tool(
 	{
 		comment: z.string().describe("Reason for approval"),
 	},
-	async (_args) => {
-		return { content: [] };
-	},
+	createNoOpHandler(),
 );
 
 export const navigatorDeny = tool(
@@ -53,9 +58,7 @@ export const navigatorDeny = tool(
 	{
 		comment: z.string().describe("Reason for denial"),
 	},
-	async (_args) => {
-		return { content: [] };
-	},
+	createNoOpHandler(),
 );
 
 // Driver tool definitions
