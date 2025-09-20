@@ -4,6 +4,7 @@ import type { DriverCommand, Role } from "../types.js";
 import type { Logger } from "../utils/logger.js";
 import { DRIVER_TOOL_NAMES, driverMcpServer } from "../utils/mcpServers.js";
 import { AsyncUserMessageStream } from "../utils/streamInput.js";
+import { TIMEOUT_CONFIG, TimeoutManager } from "../utils/timeouts.js";
 
 /**
  * Driver agent - implements the plan with navigator reviews
@@ -462,10 +463,12 @@ export class Driver extends EventEmitter {
 		}
 	}
 
-	private waitForNoPendingTools(timeoutMs = 120000): Promise<void> {
-		if (this.pendingTools.size === 0) return Promise.resolve();
-		return new Promise((resolve, reject) => {
-			const timer = setTimeout(async () => {
+	private waitForNoPendingTools(
+		timeoutMs = TIMEOUT_CONFIG.TOOL_COMPLETION,
+	): Promise<void> {
+		return TimeoutManager.createWaiterTimeout(
+			() => this.pendingTools.size === 0,
+			async () => {
 				this.logger.logEvent("DRIVER_PENDING_TOOL_TIMEOUT", {
 					pendingCount: this.pendingTools.size,
 					ids: Array.from(this.pendingTools),
@@ -482,17 +485,13 @@ export class Driver extends EventEmitter {
 						error: error instanceof Error ? error.message : String(error),
 					});
 				}
-				reject(
-					new Error(
-						`Tool results timed out after ${timeoutMs}ms. Pending tools: ${Array.from(this.pendingTools).join(", ")}`,
-					),
+				throw new Error(
+					`Tool results timed out after ${timeoutMs}ms. Pending tools: ${Array.from(this.pendingTools).join(", ")}`,
 				);
-			}, timeoutMs);
-			this.pendingToolWaiters.push(() => {
-				clearTimeout(timer);
-				resolve();
-			});
-		});
+			},
+			timeoutMs,
+			(callback) => this.pendingToolWaiters.push(callback),
+		);
 	}
 
 	/**

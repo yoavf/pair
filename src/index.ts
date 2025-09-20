@@ -24,6 +24,7 @@ import type { NavigatorCommand } from "./types.js";
 import { displayBanner } from "./utils/banner.js";
 import { type AppConfig, loadConfig, validateConfig } from "./utils/config.js";
 import { Logger } from "./utils/logger.js";
+import { TIMEOUT_CONFIG, TimeoutManager } from "./utils/timeouts.js";
 import {
 	ValidationError,
 	validateAndReadPromptFile,
@@ -56,21 +57,18 @@ class ClaudePairApp {
 
 	private async requestPermissionWithTimeout(
 		request: PermissionRequest,
-		timeoutMs = 15000,
+		timeoutMs = TIMEOUT_CONFIG.PERMISSION_REQUEST,
 	) {
-		const controller = new AbortController();
-		const timeoutId = setTimeout(() => {
-			controller.abort();
-		}, timeoutMs);
+		const { controller, cleanup } = TimeoutManager.createTimeout(timeoutMs);
 
 		try {
 			const result = await this.navigator.reviewPermission(request, {
 				signal: controller.signal,
 			});
-			clearTimeout(timeoutId);
+			cleanup();
 			return result;
 		} catch (error) {
-			clearTimeout(timeoutId);
+			cleanup();
 
 			if (error instanceof PermissionDeniedError) {
 				return {

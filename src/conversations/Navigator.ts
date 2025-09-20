@@ -18,6 +18,7 @@ import {
 	navigatorMcpServer,
 } from "../utils/mcpServers.js";
 import { AsyncUserMessageStream } from "../utils/streamInput.js";
+import { TIMEOUT_CONFIG, TimeoutManager } from "../utils/timeouts.js";
 
 // Navigator prompt templates
 const NAVIGATOR_INITIAL_PROMPT_TEMPLATE = `[CONTEXT REMINDER] You are the navigator in our pair coding session. You just finished planning our work.
@@ -540,10 +541,12 @@ export class Navigator extends EventEmitter {
 		}
 	}
 
-	private waitForNoPendingTools(timeoutMs = 120000): Promise<void> {
-		if (this.pendingTools.size === 0) return Promise.resolve();
-		return new Promise((resolve, reject) => {
-			const timer = setTimeout(async () => {
+	private waitForNoPendingTools(
+		timeoutMs = TIMEOUT_CONFIG.TOOL_COMPLETION,
+	): Promise<void> {
+		return TimeoutManager.createWaiterTimeout(
+			() => this.pendingTools.size === 0,
+			async () => {
 				this.logger.logEvent("NAVIGATOR_PENDING_TOOL_TIMEOUT", {
 					pendingCount: this.pendingTools.size,
 					ids: Array.from(this.pendingTools),
@@ -560,17 +563,13 @@ export class Navigator extends EventEmitter {
 						error: error instanceof Error ? error.message : String(error),
 					});
 				}
-				reject(
-					new Error(
-						`Navigator tool results timed out after ${timeoutMs}ms. Pending tools: ${Array.from(this.pendingTools).join(", ")}`,
-					),
+				throw new Error(
+					`Navigator tool results timed out after ${timeoutMs}ms. Pending tools: ${Array.from(this.pendingTools).join(", ")}`,
 				);
-			}, timeoutMs);
-			this.pendingToolWaiters.push(() => {
-				clearTimeout(timer);
-				resolve();
-			});
-		});
+			},
+			timeoutMs,
+			(callback) => this.pendingToolWaiters.push(callback),
+		);
 	}
 
 	/**
