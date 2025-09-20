@@ -8,8 +8,9 @@ import { Navigator } from "../../src/conversations/Navigator.js";
 import { Logger } from "../../src/utils/logger.js";
 import type { PermissionRequest } from "../../src/types/permission.js";
 
-// Only run integration tests if API key is available
-const integrationTestsEnabled = false; // process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_CODE_API_KEY;
+
+// Only run integration tests if enabled
+const integrationTestsEnabled = process.env.RUN_INTEGRATION_TESTS;
 
 describe.skipIf(!integrationTestsEnabled)("Integration Tests", () => {
   let navigator: Navigator;
@@ -52,14 +53,14 @@ describe.skipIf(!integrationTestsEnabled)("Integration Tests", () => {
       allowed: result.allowed,
       comment: result.allowed ? result.comment : result.reason,
     });
-  }, 30000); // 30 second timeout for API calls
+  }, 20000); // 20 second timeout
 
   it("should handle a review request with controlled prompt", async () => {
     // Use a very simple, predictable prompt
     const commands = await navigator.processDriverMessage(
       "I added a hello world function. Please review and mark as complete if it looks good."
     );
-
+    console.log(commands);
     expect(Array.isArray(commands)).toBe(true);
     if (commands && commands.length > 0) {
       expect(commands[0].type).toMatch(/^(code_review|complete)$/);
