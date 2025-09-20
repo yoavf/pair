@@ -21,7 +21,7 @@ import { AsyncUserMessageStream } from "../utils/streamInput.js";
 
 // New interfaces for MCP-based communication
 export interface NavigatorCommand {
-	type: "code_review" | "complete" | "approve" | "approve_always" | "deny";
+	type: "code_review" | "complete" | "approve" | "deny";
 	comment?: string;
 	summary?: string;
 	pass?: boolean; // For CodeReview: true = passing (ending), false = needs work (continue)
@@ -280,15 +280,6 @@ Only mcp__navigator__navigatorCodeReview OR mcp__navigator__navigatorComplete. N
 
 			const decision = this.extractPermissionDecision(result.commands);
 
-			if (decision.type === "approve" || decision.type === "approve_always") {
-				return {
-					allowed: true,
-					updatedInput: request.input,
-					comment: decision.comment,
-					alwaysAllow: decision.type === "approve_always",
-				};
-			}
-
 			if (decision.type === "deny") {
 				return {
 					allowed: false,
@@ -314,15 +305,12 @@ Only mcp__navigator__navigatorCodeReview OR mcp__navigator__navigatorComplete. N
 	}
 
 	private extractPermissionDecision(commands: NavigatorCommand[]): {
-		type: "approve" | "approve_always" | "deny" | "none";
+		type: "approve" | "deny" | "none";
 		comment?: string;
 	} {
 		for (const cmd of commands) {
 			if (cmd.type === "approve") {
 				return { type: "approve", comment: cmd.comment };
-			}
-			if (cmd.type === "approve_always") {
-				return { type: "approve_always", comment: cmd.comment };
 			}
 			if (cmd.type === "deny") {
 				return { type: "deny", comment: cmd.comment };

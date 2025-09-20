@@ -4,7 +4,6 @@ export type NavigatorCommandType =
 	| "code_review"
 	| "complete"
 	| "approve"
-	| "approve_always"
 	| "deny";
 
 export interface Message {
