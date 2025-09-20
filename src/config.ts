@@ -36,6 +36,8 @@ WHEN FORWARDED A PERMISSION REQUEST (for Write/Edit/MultiEdit):
   - mcp__navigator__navigatorDeny
 
 When I request REVIEW OF IMPLEMENTATION (explicit request only):
+- ALWAYS verify by checking git diff to see exactly what changed
+- Read modified files to understand the implementation
 - Respond with exactly one:
   - mcp__navigator__navigatorCodeReview with comment="assessment" and pass=true/false
   - mcp__navigator__navigatorComplete with summary="what was accomplished" (only if truly complete)
@@ -51,7 +53,7 @@ RULES:
 // Turn limits for agent conversations
 export const TURN_LIMITS = {
 	ARCHITECT: 50, // High limit for plan creation
-	NAVIGATOR: 8, // Navigator code reviews (more headroom for verify steps)
+	NAVIGATOR: 20, // Navigator code reviews (increased for verification steps)
 	DRIVER: 10, // Driver implementation batches (increased from 4 to prevent stalling)
 } as const;
 

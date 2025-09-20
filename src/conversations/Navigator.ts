@@ -107,6 +107,8 @@ This is what I've done so far: ${driverMessage}`;
 			} else {
 				const prompt = `${driverMessage}
 
+Use git diff / read tools to double check my work.
+
 CRITICAL: You MUST respond with EXACTLY ONE MCP tool call:
 - mcp__navigator__navigatorCodeReview with comment="assessment" and pass=true/false
 - mcp__navigator__navigatorComplete with summary="what was accomplished"
@@ -186,37 +188,56 @@ Only mcp__navigator__navigatorCodeReview OR mcp__navigator__navigatorComplete. N
 			input: Record<string, unknown>,
 		) => {
 			try {
-				// Deny any write attempts silently
+				// Deny any write attempts
 				if (
 					toolName === "Write" ||
 					toolName === "Edit" ||
 					toolName === "MultiEdit"
 				) {
-					return { behavior: "deny" as const, message: "" };
+					return {
+						behavior: "deny" as const,
+						message: "Navigator cannot modify files",
+					};
 				}
 				// Read must target a file within the repo (silent deny otherwise)
 				if (toolName === "Read") {
 					const fp = String(
 						(input as any)?.file_path ?? (input as any)?.path ?? "",
 					);
-					if (!fp) return { behavior: "deny" as const, message: "" };
+					if (!fp)
+						return {
+							behavior: "deny" as const,
+							message: "Read requires a file path",
+						};
 					if (fp.startsWith("/dev/null"))
-						return { behavior: "deny" as const, message: "" };
+						return {
+							behavior: "deny" as const,
+							message: "Cannot read /dev/null",
+						};
 					const abs = path.isAbsolute(fp)
 						? fp
 						: path.resolve(this.projectPath, fp);
 					const normalizedProject = path.resolve(this.projectPath) + path.sep;
 					const normalizedAbs = path.resolve(abs) + path.sep;
 					if (!normalizedAbs.startsWith(normalizedProject))
-						return { behavior: "deny" as const, message: "" };
+						return {
+							behavior: "deny" as const,
+							message: "Read files must be within project directory",
+						};
 				}
-				// Bash only for git diff/status/show (silent deny otherwise)
+				// Bash only for git diff/status/show
 				if (toolName === "Bash") {
 					const cmd = String((input as any)?.command ?? "").trim();
 					if (/[;&|`$<>]/.test(cmd))
-						return { behavior: "deny" as const, message: "" };
+						return {
+							behavior: "deny" as const,
+							message: "Bash commands with special characters not allowed",
+						};
 					if (!/^(git\s+(diff|status|show)\b)/.test(cmd))
-						return { behavior: "deny" as const, message: "" };
+						return {
+							behavior: "deny" as const,
+							message: "Bash only allowed for git diff/status/show commands",
+						};
 				}
 			} catch {}
 			return { behavior: "allow" as const, updatedInput: input };

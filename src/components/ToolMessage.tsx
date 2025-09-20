@@ -16,7 +16,7 @@ const ToolMessage: React.FC<Props> = ({
 	symbol,
 	symbolColor,
 }) => {
-	const text = String(content ?? "");
+	const text = content?.toString() ?? "";
 	const dashIndex = text.indexOf(" - ");
 
 	// Determine leading symbol: defaults are driver -> ⏺ white, navigator -> • cyan

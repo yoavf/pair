@@ -23,5 +23,4 @@ export type PermissionResult = PermissionApproval | PermissionDenial;
 
 export interface PermissionOptions {
 	signal?: AbortSignal;
-	timeoutMs?: number;
 }
