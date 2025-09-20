@@ -270,7 +270,32 @@ export async function startPairMcpServer(
 			driver: `http://127.0.0.1:${boundPort}/mcp/driver`,
 		},
 		close: async () => {
-			await new Promise<void>((resolve) => server.close(() => resolve()));
+			// Force close all existing connections before closing server
+			for (const [, transport] of navTransports) {
+				try {
+					if (transport.close) {
+						transport.close();
+					}
+				} catch (e) {
+					// Ignore close errors
+				}
+			}
+			navTransports.clear();
+
+			for (const [, transport] of drvTransports) {
+				try {
+					if (transport.close) {
+						transport.close();
+					}
+				} catch (e) {
+					// Ignore close errors
+				}
+			}
+			drvTransports.clear();
+
+			await new Promise<void>((resolve) => {
+				server.close(() => resolve());
+			});
 			try {
 				logger?.logEvent("MCP_HTTP_SERVER_CLOSED", { port: boundPort });
 			} catch {}

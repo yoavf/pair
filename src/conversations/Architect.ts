@@ -1,13 +1,17 @@
 import { EventEmitter } from "node:events";
-import { query } from "@anthropic-ai/claude-code";
+import type {
+	AgentSession,
+	EmbeddedAgentProvider,
+} from "../providers/types.js";
 import type { Role } from "../types.js";
 import type { Logger } from "../utils/logger.js";
 
 /**
- * Architect agent - creates comprehensive plans using simple query() API
+ * Architect agent - creates comprehensive plans using the provider's session API
  */
 export class Architect extends EventEmitter {
 	private sessionId: string | null = null;
+	private session: AgentSession | null = null;
 
 	constructor(
 		private systemPrompt: string,
@@ -15,6 +19,8 @@ export class Architect extends EventEmitter {
 		private maxTurns: number,
 		private projectPath: string,
 		private logger: Logger,
+		private provider: EmbeddedAgentProvider,
+		private mcpServerUrl?: string,
 	) {
 		super();
 	}
@@ -36,19 +42,29 @@ export class Architect extends EventEmitter {
 			const toolsToPass =
 				this.allowedTools[0] === "all" ? undefined : this.allowedTools;
 
-			for await (const message of query({
-				prompt: `Our task is to: ${task}\n\nPlease create a clear, step-by-step implementation plan tailored to this repository.\n- Focus on concrete steps, specific files, and commands.\n- Keep it concise and actionable.\n- Do not implement changes now.\n\nWhen your plan is ready, call the ExitPlanMode tool with { plan: <your full plan> } to finish planning.`,
-				options: {
-					cwd: this.projectPath,
-					appendSystemPrompt: this.systemPrompt,
-					allowedTools: toolsToPass,
-					permissionMode: "plan",
-					maxTurns: this.maxTurns,
-				},
-			})) {
+			// Create session with provider
+			// Note: Architect doesn't use MCP server, but we keep the parameter for consistency
+			this.session = this.provider.createSession({
+				systemPrompt: this.systemPrompt,
+				allowedTools: toolsToPass,
+				maxTurns: this.maxTurns,
+				projectPath: this.projectPath,
+				mcpServerUrl: this.mcpServerUrl || "", // Empty for Architect since it doesn't use MCP
+				permissionMode: "plan",
+			});
+
+			// Send the initial prompt
+			this.session.sendMessage(
+				`Our task is to: ${task}\n\nPlease create a clear, step-by-step implementation plan tailored to this repository.\n- Focus on concrete steps, specific files, and commands.\n- Keep it concise and actionable.\n- Do not implement changes now.\n\nWhen your plan is ready, call the ExitPlanMode tool with { plan: <your full plan> } to finish planning.`,
+			);
+
+			for await (const message of this.session) {
 				// Capture session ID
 				if (message.session_id && !this.sessionId) {
 					this.sessionId = message.session_id;
+					if (this.session) {
+						this.session.sessionId = this.sessionId;
+					}
 					this.logger.logEvent("ARCHITECT_SESSION_CAPTURED", {
 						sessionId: this.sessionId,
 					});
@@ -56,10 +72,10 @@ export class Architect extends EventEmitter {
 
 				// Track turn count and stop reason
 				if (message.type === "system") {
-					// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK system message subtype
+					// biome-ignore lint/suspicious/noExplicitAny: Provider message subtype
 					if ((message as any).subtype === "turn_limit_reached") {
 						stopReason = "turn_limit";
-						// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK system message subtype
+						// biome-ignore lint/suspicious/noExplicitAny: Provider message subtype
 					} else if ((message as any).subtype === "conversation_ended") {
 						stopReason = "completed";
 					}
@@ -93,7 +109,7 @@ export class Architect extends EventEmitter {
 								});
 
 								// Detect plan completion via ExitPlanMode tool
-								// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK tool item structure
+								// biome-ignore lint/suspicious/noExplicitAny: Provider tool item structure
 								const it: any = item as any;
 								if (it.name === "ExitPlanMode" && it.input?.plan) {
 									plan = it.input.plan as string;
@@ -103,7 +119,7 @@ export class Architect extends EventEmitter {
 									});
 									// Robust early-exit: as soon as ExitPlanMode is called with a plan,
 									// return the plan without waiting for a tool_result from the host.
-									// This avoids environments that don’t implement the ExitPlanMode tool_result handshake.
+									// This avoids environments that don't implement the ExitPlanMode tool_result handshake.
 									this.logger.logEvent("ARCHITECT_EARLY_RETURN_AFTER_PLAN", {
 										reason: "exit_plan_mode_called",
 										turnCount,
@@ -169,6 +185,12 @@ export class Architect extends EventEmitter {
 				turnCount,
 			});
 			throw error;
+		} finally {
+			// Clean up session
+			if (this.session) {
+				this.session.end();
+				this.session = null;
+			}
 		}
 	}
 

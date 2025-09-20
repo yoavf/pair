@@ -23,6 +23,9 @@ export interface AppConfig {
 
 	/** Enable sync status updates in footer (default: true) */
 	enableSyncStatus: boolean;
+
+	/** Provider type for architect agent (default: "claude-code") */
+	architectProvider: string;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -33,6 +36,7 @@ export const DEFAULT_CONFIG: AppConfig = {
 	model: undefined, // Use CLI default
 	sessionHardLimitMs: 30 * 60 * 1000, // 30 minutes
 	enableSyncStatus: true, // Enable by default
+	architectProvider: "claude-code",
 };
 
 /**
@@ -59,6 +63,9 @@ export function loadConfig(): AppConfig {
 			60 *
 			1000,
 		enableSyncStatus: process.env.CLAUDE_PAIR_DISABLE_SYNC_STATUS !== "true",
+		architectProvider:
+			process.env.CLAUDE_PAIR_ARCHITECT_PROVIDER ||
+			DEFAULT_CONFIG.architectProvider,
 	};
 
 	return config;

@@ -13,6 +13,8 @@ import { Driver } from "./conversations/Driver.js";
 import { Navigator } from "./conversations/Navigator.js";
 import { InkDisplayManager } from "./display.js";
 import { type PairMcpServer, startPairMcpServer } from "./mcp/httpServer.js";
+import { agentProviderFactory } from "./providers/factory.js";
+import type { EmbeddedAgentProvider } from "./providers/types.js";
 import {
 	NavigatorSessionError,
 	PermissionDeniedError,
@@ -168,6 +170,11 @@ class ClaudePairApp {
 		const drvUrl = this.mcp.urls.driver;
 		this.logger.logEvent("APP_MCP_URLS", { navUrl, drvUrl });
 
+		// Create architect provider
+		const architectProvider = agentProviderFactory.createProvider({
+			type: this.appConfig.architectProvider,
+		}) as EmbeddedAgentProvider;
+
 		// Create simple agents
 		this.architect = new Architect(
 			PLANNING_NAVIGATOR_PROMPT,
@@ -175,6 +182,9 @@ class ClaudePairApp {
 			TURN_LIMITS.ARCHITECT,
 			this.projectPath,
 			this.logger,
+			architectProvider,
+			// Architect doesn't use MCP server, but we can pass empty string
+			"",
 		);
 
 		this.navigator = new Navigator(
