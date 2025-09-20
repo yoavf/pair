@@ -19,6 +19,25 @@ import {
 } from "../utils/mcpServers.js";
 import { AsyncUserMessageStream } from "../utils/streamInput.js";
 
+// Navigator prompt templates
+const NAVIGATOR_INITIAL_PROMPT_TEMPLATE = `[CONTEXT REMINDER] You are the navigator in our pair coding session. You just finished planning our work.
+
+This is YOUR plan for "{originalTask}":
+
+{plan}
+---
+This is what I've done so far: {driverMessage}`;
+
+const NAVIGATOR_REVIEW_PROMPT_TEMPLATE = `{driverMessage}
+
+Use git diff / read tools to double check my work.
+
+CRITICAL: You MUST respond with EXACTLY ONE MCP tool call:
+- mcp__navigator__navigatorCodeReview with comment="assessment" and pass=true/false
+- mcp__navigator__navigatorComplete with summary="what was accomplished"
+
+Only mcp__navigator__navigatorCodeReview OR mcp__navigator__navigatorComplete. No text.`;
+
 /**
  * Navigator agent - monitors driver implementation and reviews code
  */
@@ -87,25 +106,19 @@ export class Navigator extends EventEmitter {
 			await this.ensureStreamingQuery();
 
 			if (!this.sessionId) {
-				const prompt = `[CONTEXT REMINDER] You are the navigator in our pair coding session. You just finished planning our work.
-
-This is YOUR plan for "${this.originalTask}":
-
-${this.plan}
----
-This is what I've done so far: ${driverMessage}`;
+				const prompt = NAVIGATOR_INITIAL_PROMPT_TEMPLATE.replace(
+					"{originalTask}",
+					this.originalTask ?? "",
+				)
+					.replace("{plan}", this.plan ?? "")
+					.replace("{driverMessage}", driverMessage);
 				await this.waitForNoPendingTools();
 				this.inputStream?.pushText(prompt);
 			} else {
-				const prompt = `${driverMessage}
-
-Use git diff / read tools to double check my work.
-
-CRITICAL: You MUST respond with EXACTLY ONE MCP tool call:
-- mcp__navigator__navigatorCodeReview with comment="assessment" and pass=true/false
-- mcp__navigator__navigatorComplete with summary="what was accomplished"
-
-Only mcp__navigator__navigatorCodeReview OR mcp__navigator__navigatorComplete. No text.`;
+				const prompt = NAVIGATOR_REVIEW_PROMPT_TEMPLATE.replace(
+					"{driverMessage}",
+					driverMessage,
+				);
 				await this.waitForNoPendingTools();
 				this.inputStream?.pushText(prompt);
 			}
