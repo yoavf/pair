@@ -276,7 +276,7 @@ export async function startPairMcpServer(
 					if (transport.close) {
 						transport.close();
 					}
-				} catch (e) {
+				} catch (_e) {
 					// Ignore close errors
 				}
 			}
@@ -287,7 +287,7 @@ export async function startPairMcpServer(
 					if (transport.close) {
 						transport.close();
 					}
-				} catch (e) {
+				} catch (_e) {
 					// Ignore close errors
 				}
 			}

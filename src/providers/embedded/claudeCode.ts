@@ -11,7 +11,6 @@ import type {
 	AgentInputStream,
 	AgentMessage,
 	AgentSession,
-	ProviderConfig,
 	SessionOptions,
 	StreamingAgentSession,
 	StreamingSessionOptions,

@@ -220,7 +220,7 @@ class ClaudePairApp {
 		const canUseTool = async (
 			toolName: string,
 			input: Record<string, unknown>,
-			options?: { suggestions?: Record<string, unknown> },
+			_options?: { suggestions?: Record<string, unknown> },
 		): Promise<
 			| {
 					behavior: "allow";

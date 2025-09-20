@@ -6,10 +6,6 @@
  * communication protocol between agents.
  */
 
-import type { EventEmitter } from "node:events";
-import type { Role } from "../types.js";
-import type { Logger } from "../utils/logger.js";
-
 /**
  * Agent message types that providers must handle
  */

@@ -13,7 +13,7 @@ interface Props {
 
 const ConversationView: React.FC<Props> = React.memo(({ messages, phase }) => {
 	// Layout constants - max 88 characters per line
-	const MAX_LINE_WIDTH = 88;
+	const _MAX_LINE_WIDTH = 88;
 	const DRIVER_WIDTH = 84; // characters for driver messages
 	const SYSTEM_WIDTH = 88; // characters for system messages
 	const SEPARATOR = "-".repeat(60);

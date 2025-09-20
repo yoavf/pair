@@ -36,8 +36,6 @@ export class InkDisplayManager {
 	private syncTicker?: NodeJS.Timeout;
 	private config!: AppConfig;
 	private projectPath: string = process.cwd();
-	private currentPhase: "planning" | "execution" | "review" | "complete" =
-		"planning";
 
 	start(
 		projectPath: string,
@@ -309,9 +307,9 @@ export class InkDisplayManager {
 			? `✅ Task Complete!\n\n${summary}`
 			: "✅ Task Complete! Navigator has marked the implementation as finished.";
 
-		console.log("\n" + "=".repeat(60));
+		console.log(`\n${"=".repeat(60)}`);
 		console.log(message);
-		console.log("=".repeat(60) + "\n");
+		console.log(`${"=".repeat(60)}\n`);
 	}
 
 	cleanup() {
