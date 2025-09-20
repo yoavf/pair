@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Navigator } from "../../src/conversations/Navigator.js";
 import { Logger } from "../../src/utils/logger.js";
 import type { PermissionRequest } from "../../src/types/permission.js";
+import { driverRequestReview } from "../../src/utils/mcpTools.js";
 
 
 // Only run integration tests if enabled
@@ -55,20 +56,22 @@ describe.skipIf(!integrationTestsEnabled)("Integration Tests", () => {
     });
   }, 20000); // 20 second timeout
 
-  it("should handle a review request with controlled prompt", async () => {
-    // Use a very simple, predictable prompt
-    const commands = await navigator.processDriverMessage(
-      "I added a hello world function. Please review and mark as complete if it looks good."
-    );
-    console.log(commands);
+  it("should handle a review request triggered by driver tool call", async () => {
+    // Call the actual driverRequestReview tool handler to simulate real flow
+    const toolResult = await driverRequestReview.handler({ context: "I added a hello world function" });
+
+    // Extract the message that would be sent to Navigator
+    const reviewMessage = toolResult.content[0]?.text || "Driver requesting review";
+
+    const commands = await navigator.processDriverMessage(reviewMessage);
+
+    expect(commands).not.toBeNull();
     expect(Array.isArray(commands)).toBe(true);
     if (commands && commands.length > 0) {
       expect(commands[0].type).toMatch(/^(code_review|complete)$/);
     }
 
-    // Log for manual verification
-    console.log("Review response:", commands);
-  }, 30000);
+  }, 20000);
 });
 
 describe("Mock vs Integration Consistency", () => {
