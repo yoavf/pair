@@ -292,16 +292,23 @@ export class Driver extends EventEmitter {
 								if (item.name === "Bash" && item.input?.command) {
 									lastBashCmd = String(item.input.command);
 								}
-								// Include a concise tool summary in the text forwarded to navigator
-								const file = item.input?.file_path || item.input?.path || "";
-								const cmd = item.input?.command || "";
-								const toolLine =
-									item.name === "Bash" && cmd
-										? `⚙️  Tool: Bash - ${String(cmd)}`
-										: file
-											? `⚙️  Tool: ${item.name} - ${file}`
-											: `⚙️  Tool: ${item.name}`;
-								fwdText += `${toolLine}\n`;
+								// Include tool summary in forwarded text (except approved edit tools)
+								const isApprovedEditTool =
+									item.name === "Write" ||
+									item.name === "Edit" ||
+									item.name === "MultiEdit";
+
+								if (!isApprovedEditTool) {
+									const file = item.input?.file_path || item.input?.path || "";
+									const cmd = item.input?.command || "";
+									const toolLine =
+										item.name === "Bash" && cmd
+											? `⚙️  Tool: Bash - ${String(cmd)}`
+											: file
+												? `⚙️  Tool: ${item.name} - ${file}`
+												: `⚙️  Tool: ${item.name}`;
+									fwdText += `${toolLine}\n`;
+								}
 							}
 						}
 						// Debounced verification hints once per batch (only in forwarded text)
