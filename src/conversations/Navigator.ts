@@ -11,7 +11,7 @@ import type {
 	PermissionRequest,
 	PermissionResult,
 } from "../types/permission.js";
-import type { Role } from "../types.js";
+import type { NavigatorCommandType, Role } from "../types.js";
 import type { Logger } from "../utils/logger.js";
 import {
 	NAVIGATOR_TOOL_NAMES,
@@ -21,7 +21,7 @@ import { AsyncUserMessageStream } from "../utils/streamInput.js";
 
 // New interfaces for MCP-based communication
 export interface NavigatorCommand {
-	type: "code_review" | "complete" | "approve" | "deny";
+	type: NavigatorCommandType;
 	comment?: string;
 	summary?: string;
 	pass?: boolean; // For CodeReview: true = passing (ending), false = needs work (continue)
@@ -530,15 +530,31 @@ Only mcp__navigator__navigatorCodeReview OR mcp__navigator__navigatorComplete. N
 		}
 	}
 
-	private waitForNoPendingTools(timeoutMs = 15000): Promise<void> {
+	private waitForNoPendingTools(timeoutMs = 120000): Promise<void> {
 		if (this.pendingTools.size === 0) return Promise.resolve();
-		return new Promise((resolve) => {
-			const timer = setTimeout(() => {
+		return new Promise((resolve, reject) => {
+			const timer = setTimeout(async () => {
 				this.logger.logEvent("NAVIGATOR_PENDING_TOOL_TIMEOUT", {
 					pendingCount: this.pendingTools.size,
 					ids: Array.from(this.pendingTools),
 				});
-				resolve();
+				// Interrupt the query to prevent malformed message streams
+				try {
+					// biome-ignore lint/suspicious/noExplicitAny: SDK iterator exposes optional interrupt
+					if (this.queryIterator && (this.queryIterator as any).interrupt) {
+						// biome-ignore lint/suspicious/noExplicitAny: see above
+						await (this.queryIterator as any).interrupt();
+					}
+				} catch (error) {
+					this.logger.logEvent("NAVIGATOR_QUERY_INTERRUPT_ERROR", {
+						error: error instanceof Error ? error.message : String(error),
+					});
+				}
+				reject(
+					new Error(
+						`Navigator tool results timed out after ${timeoutMs}ms. Pending tools: ${Array.from(this.pendingTools).join(", ")}`,
+					),
+				);
 			}, timeoutMs);
 			this.pendingToolWaiters.push(() => {
 				clearTimeout(timer);

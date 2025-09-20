@@ -84,6 +84,16 @@ export class Driver extends EventEmitter {
 			const batch = await this.waitForBatch();
 			return batch;
 		} catch (error) {
+			if (
+				error instanceof Error &&
+				error.message.includes("Tool results timed out")
+			) {
+				this.logger.logEvent("DRIVER_TOOL_TIMEOUT_RECOVERY", {
+					error: error.message,
+				});
+				// Session is now interrupted and will need to be restarted
+				throw new Error("Driver session interrupted due to tool timeout");
+			}
 			this.logger.logEvent("DRIVER_IMPLEMENTATION_ERROR", {
 				error: error instanceof Error ? error.message : String(error),
 			});
@@ -112,6 +122,15 @@ export class Driver extends EventEmitter {
 			const batch = await this.waitForBatch();
 			return batch;
 		} catch (error) {
+			if (
+				error instanceof Error &&
+				error.message.includes("Tool results timed out")
+			) {
+				this.logger.logEvent("DRIVER_TOOL_TIMEOUT_RECOVERY", {
+					error: error.message,
+				});
+				throw new Error("Driver session interrupted due to tool timeout");
+			}
 			this.logger.logEvent("DRIVER_FEEDBACK_ERROR", {
 				error: error instanceof Error ? error.message : String(error),
 			});
@@ -449,15 +468,31 @@ export class Driver extends EventEmitter {
 		}
 	}
 
-	private waitForNoPendingTools(timeoutMs = 15000): Promise<void> {
+	private waitForNoPendingTools(timeoutMs = 120000): Promise<void> {
 		if (this.pendingTools.size === 0) return Promise.resolve();
-		return new Promise((resolve) => {
-			const timer = setTimeout(() => {
+		return new Promise((resolve, reject) => {
+			const timer = setTimeout(async () => {
 				this.logger.logEvent("DRIVER_PENDING_TOOL_TIMEOUT", {
 					pendingCount: this.pendingTools.size,
 					ids: Array.from(this.pendingTools),
 				});
-				resolve();
+				// Interrupt the query to prevent malformed message streams
+				try {
+					// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK query interrupt method
+					if (this.queryIterator && (this.queryIterator as any).interrupt) {
+						// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK query interrupt method
+						await (this.queryIterator as any).interrupt();
+					}
+				} catch (error) {
+					this.logger.logEvent("DRIVER_QUERY_INTERRUPT_ERROR", {
+						error: error instanceof Error ? error.message : String(error),
+					});
+				}
+				reject(
+					new Error(
+						`Tool results timed out after ${timeoutMs}ms. Pending tools: ${Array.from(this.pendingTools).join(", ")}`,
+					),
+				);
 			}, timeoutMs);
 			this.pendingToolWaiters.push(() => {
 				clearTimeout(timer);
