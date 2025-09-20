@@ -8,10 +8,13 @@
 import { query } from "@anthropic-ai/claude-code";
 import { AsyncUserMessageStream } from "../../utils/streamInput.js";
 import type {
+	AgentInputStream,
 	AgentMessage,
 	AgentSession,
 	ProviderConfig,
 	SessionOptions,
+	StreamingAgentSession,
+	StreamingSessionOptions,
 } from "../types.js";
 import { BaseEmbeddedProvider } from "./base.js";
 
@@ -101,15 +104,89 @@ class ClaudeCodeSession implements AgentSession {
 }
 
 /**
+ * Streaming session implementation for Driver/Navigator
+ */
+class ClaudeCodeStreamingSession implements StreamingAgentSession {
+	sessionId: string | null = null;
+	inputStream: AgentInputStream;
+	private iterator: AsyncGenerator<any, void>;
+
+	constructor(options: StreamingSessionOptions) {
+		this.inputStream = new AsyncUserMessageStream();
+
+		// Combine standard tools with MCP tools (extracted from Driver/Navigator logic)
+		const baseTools =
+			options.allowedTools[0] === "all" ? undefined : options.allowedTools;
+		const toolsToPass: string[] | undefined = baseTools
+			? [...baseTools, ...options.additionalMcpTools]
+			: undefined;
+
+		// Configure MCP servers (embedded vs HTTP/SSE)
+		const mcpServers = options.mcpServerUrl
+			? { [options.mcpRole]: { type: "sse", url: options.mcpServerUrl } as any }
+			: { [options.mcpRole]: options.embeddedMcpServer };
+
+		// Create the query session (extracted from Driver/Navigator)
+		this.iterator = query({
+			prompt: this.inputStream as any,
+			options: {
+				cwd: options.projectPath,
+				appendSystemPrompt: options.systemPrompt,
+				allowedTools: toolsToPass,
+				mcpServers,
+				disallowedTools: options.disallowedTools,
+				permissionMode: "default",
+				maxTurns: options.maxTurns,
+				includePartialMessages: options.includePartialMessages ?? true,
+				canUseTool: options.canUseTool as any,
+			},
+		}) as AsyncGenerator<any, void>;
+	}
+
+	/**
+	 * AsyncIterable implementation
+	 */
+	async *[Symbol.asyncIterator](): AsyncIterator<AgentMessage> {
+		for await (const message of this.iterator) {
+			// Capture session ID
+			if (message.session_id && !this.sessionId) {
+				this.sessionId = message.session_id;
+			}
+
+			// Pass through messages with minimal transformation
+			yield message as AgentMessage;
+		}
+	}
+
+	/**
+	 * Interrupt the session
+	 */
+	async interrupt(): Promise<void> {
+		if ((this.iterator as any).interrupt) {
+			await (this.iterator as any).interrupt();
+		}
+	}
+}
+
+/**
  * Claude Code provider implementation
  */
 export class ClaudeCodeProvider extends BaseEmbeddedProvider {
 	readonly name = "claude-code";
 
 	/**
-	 * Create a new Claude Code session
+	 * Create a new Claude Code session (for Architect)
 	 */
 	createSession(options: SessionOptions): AgentSession {
 		return new ClaudeCodeSession(options);
+	}
+
+	/**
+	 * Create a streaming session for Driver/Navigator
+	 */
+	createStreamingSession(
+		options: StreamingSessionOptions,
+	): StreamingAgentSession {
+		return new ClaudeCodeStreamingSession(options);
 	}
 }

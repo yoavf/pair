@@ -26,6 +26,12 @@ export interface AppConfig {
 
 	/** Provider type for architect agent (default: "claude-code") */
 	architectProvider: string;
+
+	/** Provider type for navigator agent (default: "claude-code") */
+	navigatorProvider: string;
+
+	/** Provider type for driver agent (default: "claude-code") */
+	driverProvider: string;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -37,6 +43,8 @@ export const DEFAULT_CONFIG: AppConfig = {
 	sessionHardLimitMs: 30 * 60 * 1000, // 30 minutes
 	enableSyncStatus: true, // Enable by default
 	architectProvider: "claude-code",
+	navigatorProvider: "claude-code",
+	driverProvider: "claude-code",
 };
 
 /**
@@ -66,6 +74,11 @@ export function loadConfig(): AppConfig {
 		architectProvider:
 			process.env.CLAUDE_PAIR_ARCHITECT_PROVIDER ||
 			DEFAULT_CONFIG.architectProvider,
+		navigatorProvider:
+			process.env.CLAUDE_PAIR_NAVIGATOR_PROVIDER ||
+			DEFAULT_CONFIG.navigatorProvider,
+		driverProvider:
+			process.env.CLAUDE_PAIR_DRIVER_PROVIDER || DEFAULT_CONFIG.driverProvider,
 	};
 
 	return config;

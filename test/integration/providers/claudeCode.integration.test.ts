@@ -9,7 +9,7 @@ import { startPairMcpServer, type PairMcpServer } from '../../../src/mcp/httpSer
 import type { SessionOptions } from '../../../src/providers/types.js';
 
 // Only run integration tests if enabled
-const integrationTestsEnabled = false; //process.env.RUN_INTEGRATION_TESTS;
+const integrationTestsEnabled = process.env.RUN_INTEGRATION_TESTS;
 
 describe.skipIf(!integrationTestsEnabled)("ClaudeCodeProvider Integration", () => {
   let mcpServer: PairMcpServer;

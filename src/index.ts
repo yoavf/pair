@@ -170,12 +170,20 @@ class ClaudePairApp {
 		const drvUrl = this.mcp.urls.driver;
 		this.logger.logEvent("APP_MCP_URLS", { navUrl, drvUrl });
 
-		// Create architect provider
+		// Create providers for all agents
 		const architectProvider = agentProviderFactory.createProvider({
 			type: this.appConfig.architectProvider,
 		}) as EmbeddedAgentProvider;
 
-		// Create simple agents
+		const navigatorProvider = agentProviderFactory.createProvider({
+			type: this.appConfig.navigatorProvider,
+		}) as EmbeddedAgentProvider;
+
+		const driverProvider = agentProviderFactory.createProvider({
+			type: this.appConfig.driverProvider,
+		}) as EmbeddedAgentProvider;
+
+		// Create agents with providers
 		this.architect = new Architect(
 			PLANNING_NAVIGATOR_PROMPT,
 			["Read", "Grep", "Glob", "WebSearch", "WebFetch", "TodoWrite", "Bash"],
@@ -204,6 +212,7 @@ class ClaudePairApp {
 			this.appConfig.navigatorMaxTurns,
 			this.projectPath,
 			this.logger,
+			navigatorProvider,
 			navUrl,
 		);
 
@@ -272,6 +281,7 @@ class ClaudePairApp {
 			this.appConfig.driverMaxTurns,
 			this.projectPath,
 			this.logger,
+			driverProvider,
 			canUseTool,
 			drvUrl,
 		);

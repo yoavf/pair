@@ -9,6 +9,8 @@ import type {
 	EmbeddedAgentProvider,
 	ProviderConfig,
 	SessionOptions,
+	StreamingAgentSession,
+	StreamingSessionOptions,
 } from "../types.js";
 
 /**
@@ -25,6 +27,14 @@ export abstract class BaseEmbeddedProvider implements EmbeddedAgentProvider {
 	 * Must be implemented by concrete providers
 	 */
 	abstract createSession(options: SessionOptions): AgentSession;
+
+	/**
+	 * Create a streaming session for Driver/Navigator agents
+	 * Must be implemented by concrete providers
+	 */
+	abstract createStreamingSession(
+		options: StreamingSessionOptions,
+	): StreamingAgentSession;
 
 	/**
 	 * Optional initialization

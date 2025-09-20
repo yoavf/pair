@@ -1,6 +1,10 @@
 import { EventEmitter } from "node:events";
 import path from "node:path";
-import { query } from "@anthropic-ai/claude-code";
+import type {
+	AgentInputStream,
+	EmbeddedAgentProvider,
+	StreamingAgentSession,
+} from "../providers/types.js";
 import {
 	NavigatorSessionError,
 	PermissionDeniedError,
@@ -17,7 +21,6 @@ import {
 	NAVIGATOR_TOOL_NAMES,
 	navigatorMcpServer,
 } from "../utils/mcpServers.js";
-import { AsyncUserMessageStream } from "../utils/streamInput.js";
 import { TIMEOUT_CONFIG, TimeoutManager } from "../utils/timeouts.js";
 
 // Navigator prompt templates
@@ -49,9 +52,8 @@ type PermissionDecisionType =
  */
 export class Navigator extends EventEmitter {
 	private sessionId: string | null = null;
-	private inputStream?: AsyncUserMessageStream;
-	// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK query type
-	private queryIterator: any = null;
+	private inputStream?: AgentInputStream;
+	private streamingSession: StreamingAgentSession | null = null;
 	private processingLoopStarted = false;
 	private batchResolvers: Array<(cmds: NavigatorCommand[]) => void> = [];
 	private pendingCommands: NavigatorCommand[] = [];
@@ -69,6 +71,7 @@ export class Navigator extends EventEmitter {
 		private maxTurns: number,
 		private projectPath: string,
 		private logger: Logger,
+		private provider: EmbeddedAgentProvider,
 		private mcpServerUrl?: string,
 	) {
 		super();
@@ -168,30 +171,7 @@ export class Navigator extends EventEmitter {
 	}
 
 	private async ensureStreamingQuery() {
-		if (this.queryIterator) return;
-		// Combine standard tools with MCP tools
-		const baseTools =
-			this.allowedTools[0] === "all" ? undefined : this.allowedTools;
-		const toolsToPass = baseTools
-			? Array.from(new Set<string>([...baseTools, ...NAVIGATOR_TOOL_NAMES]))
-			: [...NAVIGATOR_TOOL_NAMES];
-
-		this.inputStream = new AsyncUserMessageStream();
-		const mcpServers = this.mcpServerUrl
-			? { navigator: { type: "sse", url: this.mcpServerUrl } as any }
-			: { navigator: navigatorMcpServer };
-		const disallowedTools = ["Write", "Edit", "MultiEdit"];
-
-		// Log query setup and tool availability
-		try {
-			this.logger.logEvent("NAVIGATOR_QUERY_INIT", {
-				allowedTools: toolsToPass,
-				disallowedTools,
-				mcpServers,
-				maxTurns: this.maxTurns,
-				hasSystemPrompt: !!this.systemPrompt,
-			});
-		} catch {}
+		if (this.streamingSession) return;
 
 		// Silent gating: allow only pre-approved tools; deny others without emitting messages
 		const navCanUseTool = async (
@@ -254,21 +234,34 @@ export class Navigator extends EventEmitter {
 			return { behavior: "allow" as const, updatedInput: input };
 		};
 
-		this.queryIterator = query({
-			prompt: this.inputStream,
-			options: {
-				cwd: this.projectPath,
-				appendSystemPrompt: this.systemPrompt,
-				allowedTools: toolsToPass,
-				mcpServers,
-				disallowedTools,
-				permissionMode: "default",
-				maxTurns: this.maxTurns,
-				includePartialMessages: true,
-				// biome-ignore lint/suspicious/noExplicitAny: SDK signature
-				canUseTool: navCanUseTool as any,
-			},
+		// Create streaming session using provider
+		this.streamingSession = this.provider.createStreamingSession({
+			systemPrompt: this.systemPrompt,
+			allowedTools: this.allowedTools,
+			additionalMcpTools: NAVIGATOR_TOOL_NAMES,
+			maxTurns: this.maxTurns,
+			projectPath: this.projectPath,
+			mcpServerUrl: this.mcpServerUrl,
+			embeddedMcpServer: navigatorMcpServer,
+			mcpRole: "navigator",
+			canUseTool: navCanUseTool,
+			disallowedTools: ["Write", "Edit", "MultiEdit"],
+			includePartialMessages: true,
 		});
+
+		// Use the session's input stream
+		this.inputStream = this.streamingSession.inputStream;
+
+		// Log session creation
+		try {
+			this.logger.logEvent("NAVIGATOR_QUERY_INIT", {
+				allowedTools: this.allowedTools,
+				disallowedTools: ["Write", "Edit", "MultiEdit"],
+				mcpServerUrl: this.mcpServerUrl || "embedded",
+				maxTurns: this.maxTurns,
+				hasSystemPrompt: !!this.systemPrompt,
+			});
+		} catch {}
 
 		if (!this.processingLoopStarted) {
 			this.processingLoopStarted = true;
@@ -367,8 +360,8 @@ export class Navigator extends EventEmitter {
 
 	private async processMessages() {
 		try {
-			// biome-ignore lint/style/noNonNullAssertion: queryIterator guaranteed to exist after ensureStreamingQuery
-			for await (const message of this.queryIterator!) {
+			// biome-ignore lint/style/noNonNullAssertion: streamingSession guaranteed to exist after ensureStreamingQuery
+			for await (const message of this.streamingSession!) {
 				if (message.session_id) {
 					if (!this.sessionId) {
 						this.sessionId = message.session_id;
@@ -392,7 +385,7 @@ export class Navigator extends EventEmitter {
 								// Do not emit free-form navigator text; tools only
 								_fullText += `${item.text}\n`;
 							} else if (item.type === "tool_use") {
-								const tname = item.name;
+								const tname = item.name || "";
 								const isDecision = Navigator.isDecisionTool(tname);
 								let allowEmit = true;
 								if (this.inPermissionApproval) {
@@ -551,15 +544,13 @@ export class Navigator extends EventEmitter {
 					pendingCount: this.pendingTools.size,
 					ids: Array.from(this.pendingTools),
 				});
-				// Interrupt the query to prevent malformed message streams
+				// Interrupt the session to prevent malformed message streams
 				try {
-					// biome-ignore lint/suspicious/noExplicitAny: SDK iterator exposes optional interrupt
-					if (this.queryIterator && (this.queryIterator as any).interrupt) {
-						// biome-ignore lint/suspicious/noExplicitAny: see above
-						await (this.queryIterator as any).interrupt();
+					if (this.streamingSession?.interrupt) {
+						await this.streamingSession.interrupt();
 					}
 				} catch (error) {
-					this.logger.logEvent("NAVIGATOR_QUERY_INTERRUPT_ERROR", {
+					this.logger.logEvent("NAVIGATOR_SESSION_INTERRUPT_ERROR", {
 						error: error instanceof Error ? error.message : String(error),
 					});
 				}
@@ -609,12 +600,10 @@ export class Navigator extends EventEmitter {
 
 	public async stop(): Promise<void> {
 		try {
-			// biome-ignore lint/suspicious/noExplicitAny: SDK iterator exposes optional interrupt
-			if (this.queryIterator && (this.queryIterator as any).interrupt) {
-				// biome-ignore lint/suspicious/noExplicitAny: see above
-				await (this.queryIterator as any).interrupt();
+			if (this.streamingSession?.interrupt) {
+				await this.streamingSession.interrupt();
 			}
-			this.inputStream?.end();
+			// Note: inputStream is managed by the streamingSession, no need to end it separately
 		} catch {}
 	}
 }

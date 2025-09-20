@@ -9,6 +9,7 @@ import { Logger } from "../../src/utils/logger.js";
 import type { PermissionRequest } from "../../src/types/permission.js";
 import { driverRequestReview } from "../../src/utils/mcpTools.js";
 import { startPairMcpServer, type PairMcpServer } from "../../src/mcp/httpServer.js";
+import { ClaudeCodeProvider } from "../../src/providers/embedded/claudeCode.js";
 
 
 // Only run integration tests if enabled
@@ -46,13 +47,17 @@ describe.skipIf(!integrationTestsEnabled)("Navigator Integration Tests", () => {
       close: vi.fn(),
     } as any;
 
-    // Create Navigator with MCP server URL
+    // Create real Claude Code provider for integration tests
+    const provider = new ClaudeCodeProvider({ type: "claude-code" });
+
+    // Create Navigator with provider and MCP server URL
     navigator = new Navigator(
       "You are a navigator in a pair programming session. Respond only with MCP tool calls.",
       ["Read", "Grep", "Glob"],
       5, // Low turn limit for integration tests
       process.cwd(),
       mockLogger,
+      provider,
       mcpServer.urls.navigator, // Provide the actual MCP server URL
     );
   });

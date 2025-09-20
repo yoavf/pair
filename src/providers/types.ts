@@ -70,6 +70,14 @@ export interface AgentProvider {
 }
 
 /**
+ * Input stream interface for sending messages to agents
+ */
+export interface AgentInputStream {
+	pushText(text: string): void;
+	end(): void;
+}
+
+/**
  * Session interface for embedded agent conversations
  */
 export interface AgentSession extends AsyncIterable<AgentMessage> {
@@ -92,6 +100,26 @@ export interface AgentSession extends AsyncIterable<AgentMessage> {
 	 * End the session
 	 */
 	end(): void;
+}
+
+/**
+ * Streaming session interface for Driver/Navigator agents
+ */
+export interface StreamingAgentSession extends AsyncIterable<AgentMessage> {
+	/**
+	 * Session identifier (set after first message)
+	 */
+	sessionId: string | null;
+
+	/**
+	 * Input stream for sending messages
+	 */
+	inputStream: AgentInputStream;
+
+	/**
+	 * Interrupt the session
+	 */
+	interrupt?(): Promise<void>;
 }
 
 /**
@@ -121,15 +149,49 @@ export interface SessionOptions {
 }
 
 /**
+ * Options for creating streaming sessions (Driver/Navigator)
+ */
+export interface StreamingSessionOptions {
+	systemPrompt: string;
+	allowedTools: string[];
+	additionalMcpTools: string[]; // e.g., DRIVER_TOOL_NAMES, NAVIGATOR_TOOL_NAMES
+	maxTurns: number;
+	projectPath: string;
+	mcpServerUrl?: string; // Optional - falls back to embedded server
+	embeddedMcpServer?: any; // Embedded server object (driverMcpServer, navigatorMcpServer)
+	mcpRole: "driver" | "navigator"; // Which MCP server to use
+	canUseTool?: (
+		toolName: string,
+		input: Record<string, unknown>,
+	) => Promise<
+		| {
+				behavior: "allow";
+				updatedInput: Record<string, unknown>;
+				updatedPermissions?: Record<string, unknown>;
+		  }
+		| { behavior: "deny"; message: string }
+	>;
+	disallowedTools?: string[];
+	includePartialMessages?: boolean;
+}
+
+/**
  * Embedded provider interface for in-process agents (like Claude Code)
  */
 export interface EmbeddedAgentProvider extends AgentProvider {
 	readonly type: "embedded";
 
 	/**
-	 * Create a new session with the agent
+	 * Create a new session with the agent (for Architect)
 	 */
 	createSession(options: SessionOptions): AgentSession;
+
+	/**
+	 * Create a streaming session for Driver/Navigator agents
+	 */
+	createStreamingSession(
+		options: StreamingSessionOptions,
+	): StreamingAgentSession;
 }
 
 /**

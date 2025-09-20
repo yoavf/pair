@@ -1,9 +1,12 @@
 import { EventEmitter } from "node:events";
-import { query } from "@anthropic-ai/claude-code";
+import type {
+	AgentInputStream,
+	EmbeddedAgentProvider,
+	StreamingAgentSession,
+} from "../providers/types.js";
 import type { DriverCommand, Role } from "../types.js";
 import type { Logger } from "../utils/logger.js";
 import { DRIVER_TOOL_NAMES, driverMcpServer } from "../utils/mcpServers.js";
-import { AsyncUserMessageStream } from "../utils/streamInput.js";
 import { TIMEOUT_CONFIG, TimeoutManager } from "../utils/timeouts.js";
 
 /**
@@ -13,9 +16,8 @@ type UnknownRecord = Record<string, unknown>;
 
 export class Driver extends EventEmitter {
 	private sessionId: string | null = null;
-	private inputStream?: AsyncUserMessageStream;
-	// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK query iterator type
-	private queryIterator: AsyncGenerator<any, void> | null = null;
+	private inputStream?: AgentInputStream;
+	private streamingSession: StreamingAgentSession | null = null;
 	private processingLoopStarted = false;
 	private batchResolvers: Array<(msgs: string[]) => void> = [];
 	private pendingTexts: string[] = [];
@@ -44,6 +46,7 @@ export class Driver extends EventEmitter {
 		private maxTurns: number,
 		private projectPath: string,
 		private logger: Logger,
+		private provider: EmbeddedAgentProvider,
 		_canUseTool?: (
 			toolName: string,
 			input: UnknownRecord,
@@ -170,44 +173,36 @@ export class Driver extends EventEmitter {
 	}
 
 	private async ensureStreamingQuery() {
-		if (this.queryIterator) return;
-		// Combine standard tools with MCP tools. If 'all' is requested, allow all tools
-		// (built-ins + MCP) by leaving allowedTools undefined.
-		const baseTools =
-			this.allowedTools[0] === "all" ? undefined : this.allowedTools;
-		const toolsToPass: string[] | undefined = baseTools
-			? [...baseTools, ...DRIVER_TOOL_NAMES]
-			: undefined;
+		if (this.streamingSession) return;
 
-		this.inputStream = new AsyncUserMessageStream();
-		const mcpServers = this.mcpServerUrl
-			? { driver: { type: "sse", url: this.mcpServerUrl } as any }
-			: { driver: driverMcpServer };
-		// Log query setup and tool availability
+		// Create streaming session using provider
+		this.streamingSession = this.provider.createStreamingSession({
+			systemPrompt: this.systemPrompt,
+			allowedTools: this.allowedTools,
+			additionalMcpTools: DRIVER_TOOL_NAMES,
+			maxTurns: this.maxTurns,
+			projectPath: this.projectPath,
+			mcpServerUrl: this.mcpServerUrl,
+			embeddedMcpServer: driverMcpServer,
+			mcpRole: "driver",
+			canUseTool: this.canUseTool,
+			disallowedTools: [],
+			includePartialMessages: true,
+		});
+
+		// Use the session's input stream
+		this.inputStream = this.streamingSession.inputStream;
+
+		// Log session creation
 		try {
 			this.logger.logEvent("DRIVER_QUERY_INIT", {
-				allowedTools: toolsToPass ?? "all",
-				mcpServers,
+				allowedTools:
+					this.allowedTools[0] === "all" ? "all" : this.allowedTools,
+				mcpServerUrl: this.mcpServerUrl || "embedded",
 				maxTurns: this.maxTurns,
 				hasSystemPrompt: !!this.systemPrompt,
 			});
 		} catch {}
-		this.queryIterator = query({
-			// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK prompt interface expects AsyncIterable
-			prompt: this.inputStream as any,
-			options: {
-				cwd: this.projectPath,
-				appendSystemPrompt: this.systemPrompt,
-				allowedTools: toolsToPass,
-				mcpServers,
-				permissionMode: "default",
-				maxTurns: this.maxTurns,
-				includePartialMessages: true,
-				// biome-ignore lint/suspicious/noExplicitAny: CanUseTool function signature provided by SDK
-				canUseTool: this.canUseTool as any,
-			},
-			// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK query return type
-		}) as any;
 
 		if (!this.processingLoopStarted) {
 			this.processingLoopStarted = true;
@@ -217,8 +212,8 @@ export class Driver extends EventEmitter {
 
 	private async processMessages() {
 		try {
-			// biome-ignore lint/style/noNonNullAssertion: queryIterator is guaranteed to exist after ensureStreamingQuery
-			for await (const message of this.queryIterator!) {
+			// biome-ignore lint/style/noNonNullAssertion: streamingSession is guaranteed to exist after ensureStreamingQuery
+			for await (const message of this.streamingSession!) {
 				if (message.type === "system") {
 					// Forward system notifications (e.g., turn_limit_reached, conversation_ended)
 					try {
@@ -230,9 +225,8 @@ export class Driver extends EventEmitter {
 							subtype === "turn_limit_reached" ||
 							subtype === "conversation_ended"
 						) {
-							// Clear iterator so next prompt will re-initialize the session
-							// biome-ignore lint/suspicious/noExplicitAny: internals
-							(this.queryIterator as any) = null;
+							// Clear session so next prompt will re-initialize
+							this.streamingSession = null;
 							this.processingLoopStarted = false;
 						}
 					} catch {}
@@ -278,8 +272,9 @@ export class Driver extends EventEmitter {
 										id: toolUseId,
 										tool: item.name,
 									});
+
 									// Store MCP tool results for driver communication
-									if (item.name.startsWith("mcp__driver__")) {
+									if (item.name?.startsWith("mcp__driver__")) {
 										this.toolResults.set(toolUseId, {
 											toolName: item.name,
 											input: item.input,
@@ -296,11 +291,13 @@ export class Driver extends EventEmitter {
 										tool: item.name,
 										file: fileName,
 									});
+									const filePath = item.input?.file_path;
 									if (
-										item.input?.file_path &&
-										!modifiedFiles.includes(item.input.file_path)
+										filePath &&
+										typeof filePath === "string" &&
+										!modifiedFiles.includes(filePath)
 									) {
-										modifiedFiles.push(item.input.file_path);
+										modifiedFiles.push(filePath);
 									}
 								}
 								if (item.name === "Bash" && item.input?.command) {
@@ -473,15 +470,13 @@ export class Driver extends EventEmitter {
 					pendingCount: this.pendingTools.size,
 					ids: Array.from(this.pendingTools),
 				});
-				// Interrupt the query to prevent malformed message streams
+				// Interrupt the session to prevent malformed message streams
 				try {
-					// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK query interrupt method
-					if (this.queryIterator && (this.queryIterator as any).interrupt) {
-						// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK query interrupt method
-						await (this.queryIterator as any).interrupt();
+					if (this.streamingSession?.interrupt) {
+						await this.streamingSession.interrupt();
 					}
 				} catch (error) {
-					this.logger.logEvent("DRIVER_QUERY_INTERRUPT_ERROR", {
+					this.logger.logEvent("DRIVER_SESSION_INTERRUPT_ERROR", {
 						error: error instanceof Error ? error.message : String(error),
 					});
 				}
@@ -555,12 +550,10 @@ export class Driver extends EventEmitter {
 
 	public async stop(): Promise<void> {
 		try {
-			// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK query interrupt method
-			if (this.queryIterator && (this.queryIterator as any).interrupt) {
-				// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK query interrupt method
-				await (this.queryIterator as any).interrupt();
+			if (this.streamingSession?.interrupt) {
+				await this.streamingSession.interrupt();
 			}
-			this.inputStream?.end();
+			// Note: inputStream is managed by the streamingSession, no need to end it separately
 		} catch {}
 	}
 
