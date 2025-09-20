@@ -1,15 +1,9 @@
 import { EventEmitter } from "node:events";
 import { query } from "@anthropic-ai/claude-code";
-import type { Role } from "../types.js";
+import type { DriverCommand, Role } from "../types.js";
 import type { Logger } from "../utils/logger.js";
 import { DRIVER_TOOL_NAMES, driverMcpServer } from "../utils/mcpServers.js";
 import { AsyncUserMessageStream } from "../utils/streamInput.js";
-
-// New interface for MCP-based driver commands
-export interface DriverCommand {
-	type: "request_review" | "request_guidance";
-	context?: string;
-}
 
 /**
  * Driver agent - implements the plan with navigator reviews

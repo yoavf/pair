@@ -1,5 +1,5 @@
 /**
- * Configuration management for Claude Pair Programming
+ * Configuration management for Pair
  */
 
 export interface AppConfig {

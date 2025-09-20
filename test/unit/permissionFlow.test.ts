@@ -4,7 +4,8 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MockClaudeCodeSdk, CommonScenarios, MockMessageHelpers } from "../mocks/claudeCodeSdk.js";
-import { Navigator, type NavigatorCommand } from "../../src/conversations/Navigator.js";
+import { Navigator } from "../../src/conversations/Navigator.js";
+import type { NavigatorCommand } from "../../src/types.js";
 import { Logger } from "../../src/utils/logger.js";
 import type { PermissionRequest } from "../../src/types/permission.js";
 import {

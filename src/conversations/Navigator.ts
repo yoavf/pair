@@ -11,21 +11,13 @@ import type {
 	PermissionRequest,
 	PermissionResult,
 } from "../types/permission.js";
-import type { NavigatorCommandType, Role } from "../types.js";
+import type { NavigatorCommand, Role } from "../types.js";
 import type { Logger } from "../utils/logger.js";
 import {
 	NAVIGATOR_TOOL_NAMES,
 	navigatorMcpServer,
 } from "../utils/mcpServers.js";
 import { AsyncUserMessageStream } from "../utils/streamInput.js";
-
-// New interfaces for MCP-based communication
-export interface NavigatorCommand {
-	type: NavigatorCommandType;
-	comment?: string;
-	summary?: string;
-	pass?: boolean; // For CodeReview: true = passing (ending), false = needs work (continue)
-}
 
 /**
  * Navigator agent - monitors driver implementation and reviews code

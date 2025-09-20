@@ -15,7 +15,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 try {
-  console.log('🎨 Starting Claude Pair UI Preview...\n');
+  console.log('🎨 Starting Pair UI Preview...\n');
 
   // Run the preview with tsx
   const previewPath = join(__dirname, 'preview.tsx');

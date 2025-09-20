@@ -10,7 +10,6 @@ import {
 } from "./config.js";
 import { Architect } from "./conversations/Architect.js";
 import { Driver } from "./conversations/Driver.js";
-import type { NavigatorCommand } from "./conversations/Navigator.js";
 import { Navigator } from "./conversations/Navigator.js";
 import { InkDisplayManager } from "./display.js";
 import { type PairMcpServer, startPairMcpServer } from "./mcp/httpServer.js";
@@ -21,6 +20,7 @@ import {
 	PermissionTimeoutError,
 } from "./types/errors.js";
 import type { PermissionRequest } from "./types/permission.js";
+import type { NavigatorCommand } from "./types.js";
 import { displayBanner } from "./utils/banner.js";
 import { type AppConfig, loadConfig, validateConfig } from "./utils/config.js";
 import { Logger } from "./utils/logger.js";

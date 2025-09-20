@@ -50,7 +50,7 @@ const UIPreview: React.FC = () => {
 	return (
 		<Box flexDirection="column" padding={2}>
 			<Text bold color="cyan">
-				🎨 Claude Pair UI Design Preview
+				🎨 Pair - UI Design Preview
 			</Text>
 			<Text dimColor>Showcasing all message types and variations</Text>
 

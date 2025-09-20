@@ -47,7 +47,7 @@ export class Logger {
 			const timestamp = new Date().toISOString();
 			this.logStream = fs.createWriteStream(this.logFile, { flags: "w" });
 			const header = [
-				`=== Claude Pair Programming Debug Log - ${timestamp} ===`,
+				`=== Pair Programming Debug Log - ${timestamp} ===`,
 				`=== Log Level: ${this.logLevel.toUpperCase()} ===`,
 				`=== PID: ${process.pid} CWD: ${process.cwd()} ===`,
 				"",
