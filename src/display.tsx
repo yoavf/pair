@@ -303,13 +303,36 @@ export class InkDisplayManager {
 	}
 
 	showCompletionMessage(summary?: string) {
-		const message = summary
-			? `✅ Task Complete!\n\n${summary}`
-			: "✅ Task Complete! Navigator has marked the implementation as finished.";
+		// Add horizontal separator
+		const separatorMessage: Message = {
+			role: "system",
+			content: "─".repeat(80),
+			timestamp: new Date(),
+			sessionRole: "navigator",
+			symbol: "",
+		};
+		this.appendMessage(separatorMessage);
 
-		console.log(`\n${"=".repeat(60)}`);
-		console.log(message);
-		console.log(`${"=".repeat(60)}\n`);
+		// Add title with green checkmark
+		const titleMessage: Message = {
+			role: "system",
+			content: "✅ Task completed:",
+			timestamp: new Date(),
+			sessionRole: "navigator",
+			symbol: "",
+		};
+		this.appendMessage(titleMessage);
+
+		// Add completion summary
+		const completionText =
+			summary || "Navigator has marked the implementation as finished.";
+		const summaryMessage: Message = {
+			role: "assistant",
+			content: completionText,
+			timestamp: new Date(),
+			sessionRole: "navigator",
+		};
+		this.appendMessage(summaryMessage);
 	}
 
 	cleanup() {
