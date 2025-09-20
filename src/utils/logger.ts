@@ -13,6 +13,7 @@ export class Logger {
 	private logFile: string;
 	private logStream: fs.WriteStream | null = null;
 	private logLevel: LogLevel | null;
+	private mirrorToConsole = false;
 
 	constructor(filename: string = "claude-pair-debug.log") {
 		// Parse LOG_LEVEL environment variable
@@ -23,24 +24,35 @@ export class Logger {
 
 		// Only initialize file logging if LOG_LEVEL is set
 		if (this.logLevel) {
-			const logsDir = path.join(os.homedir(), ".claude-pair", "logs");
-
-			// Ensure logs directory exists
-			if (!fs.existsSync(logsDir)) {
-				fs.mkdirSync(logsDir, { recursive: true });
+			const configuredPath = process.env.LOG_FILE;
+			if (configuredPath) {
+				// If LOG_FILE is absolute, use as-is; otherwise, place within default logs dir
+				const isAbsolute = path.isAbsolute(configuredPath);
+				const defaultDir = path.join(os.homedir(), ".claude-pair", "logs");
+				if (!fs.existsSync(defaultDir))
+					fs.mkdirSync(defaultDir, { recursive: true });
+				this.logFile = isAbsolute
+					? configuredPath
+					: path.join(defaultDir, configuredPath);
+				const parentDir = path.dirname(this.logFile);
+				if (!fs.existsSync(parentDir))
+					fs.mkdirSync(parentDir, { recursive: true });
+			} else {
+				const logsDir = path.join(os.homedir(), ".claude-pair", "logs");
+				if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
+				this.logFile = path.join(logsDir, filename);
 			}
-
-			this.logFile = path.join(logsDir, filename);
 
 			// Create log file with timestamp header
 			const timestamp = new Date().toISOString();
 			this.logStream = fs.createWriteStream(this.logFile, { flags: "w" });
-			this.logStream.write(
-				`=== Claude Pair Programming Debug Log - ${timestamp} ===\n`,
-			);
-			this.logStream.write(
-				`=== Log Level: ${this.logLevel.toUpperCase()} ===\n\n`,
-			);
+			const header = [
+				`=== Pair Programming Debug Log - ${timestamp} ===`,
+				`=== Log Level: ${this.logLevel.toUpperCase()} ===`,
+				`=== PID: ${process.pid} CWD: ${process.cwd()} ===`,
+				"",
+			].join("\n");
+			this.logStream.write(header);
 		} else {
 			this.logFile = "";
 		}
@@ -68,12 +80,16 @@ export class Logger {
 			message: JSON.stringify(message, null, 2),
 		};
 
-		this.logStream.write(`NAVIGATOR [${entry.timestamp}] ${sessionId}\n`);
-		if (context) {
-			this.logStream.write(`Context: ${context}\n`);
-		}
-		this.logStream.write(`Raw Message:\n${entry.message}\n`);
-		this.logStream.write(`${"=".repeat(80)}\n\n`);
+		const lines = [
+			`NAVIGATOR [${entry.timestamp}] ${sessionId}`,
+			context ? `Context: ${context}` : undefined,
+			`Raw Message:`,
+			entry.message,
+			`${"=".repeat(80)}`,
+			"",
+		].filter(Boolean) as string[];
+		const output = lines.join("\n");
+		this.logStream.write(output);
 	}
 
 	// biome-ignore lint/suspicious/noExplicitAny: Generic logging interface for flexibility
@@ -88,12 +104,16 @@ export class Logger {
 			message: JSON.stringify(message, null, 2),
 		};
 
-		this.logStream.write(`DRIVER [${entry.timestamp}] ${sessionId}\n`);
-		if (context) {
-			this.logStream.write(`Context: ${context}\n`);
-		}
-		this.logStream.write(`Raw Message:\n${entry.message}\n`);
-		this.logStream.write(`${"=".repeat(80)}\n\n`);
+		const lines = [
+			`DRIVER [${entry.timestamp}] ${sessionId}`,
+			context ? `Context: ${context}` : undefined,
+			`Raw Message:`,
+			entry.message,
+			`${"=".repeat(80)}`,
+			"",
+		].filter(Boolean) as string[];
+		const output = lines.join("\n");
+		this.logStream.write(output);
 	}
 
 	// biome-ignore lint/suspicious/noExplicitAny: Generic logging interface for flexibility
@@ -106,9 +126,15 @@ export class Logger {
 			data: JSON.stringify(data, null, 2),
 		};
 
-		this.logStream.write(`EVENT [${entry.timestamp}] ${event}\n`);
-		this.logStream.write(`Data:\n${entry.data}\n`);
-		this.logStream.write(`${"=".repeat(80)}\n\n`);
+		const lines = [
+			`EVENT [${entry.timestamp}] ${event}`,
+			`Data:`,
+			entry.data,
+			`${"=".repeat(80)}`,
+			"",
+		];
+		const output = lines.join("\n");
+		this.logStream.write(output);
 	}
 
 	// biome-ignore lint/suspicious/noExplicitAny: Generic logging interface for flexibility
@@ -121,9 +147,20 @@ export class Logger {
 			state: JSON.stringify(state, null, 2),
 		};
 
-		this.logStream.write(`STATE [${entry.timestamp}] ${description}\n`);
-		this.logStream.write(`State:\n${entry.state}\n`);
-		this.logStream.write(`${"=".repeat(80)}\n\n`);
+		const lines = [
+			`STATE [${entry.timestamp}] ${description}`,
+			`State:`,
+			entry.state,
+			`${"=".repeat(80)}`,
+			"",
+		];
+		const output = lines.join("\n");
+		this.logStream.write(output);
+		if (this.mirrorToConsole) console.log(output);
+	}
+
+	getFilePath(): string | null {
+		return this.logStream ? this.logFile : null;
 	}
 
 	close() {

@@ -9,8 +9,8 @@ This tool creates a collaborative coding session with two Claude instances worki
 - The session starts with a **Planning** phase where a plan is formulated by the Navigator.
 - The plan is then passed to the Driver for **implementation**.
 - The Navigator acts in two moments only:
-  - Approving/denying file modifications when the Driver requests an edit (Approve / ApproveAlways / Deny). It may add a single short feedback line after approvals.
-  - Performing a code review when the Driver explicitly asks using `{{RequestReview}}` (CodeReview pass=true|false, then Complete).
+  - Approving/denying file modifications when the Driver requests an edit (Approve / Deny).
+  - Performing a code review when the Driver explicitly asks (CodeReview pass=true|false, then Complete).
 
 The Navigator stays otherwise silent; the Driver makes actual changes and progresses continuously.
 
@@ -146,7 +146,6 @@ src/
 ## Notes
 
 - Uses your existing Claude authentication. If Claude isn't configured, run `claude` first to set up authentication
-- Uses mock tools (text-based commands like `{{Nod}}`, `{{Feedback}}`) due to a current Claude Code SDK limitation with streaming mode and tools. See [issue #6710](https://github.com/anthropics/claude-code/issues/6710)
 - The two agents can occasionally get into repetitive back‑and‑forth (an implicit "infinite loop"). A hard time limit is enforced for the execution phase (30 minutes by default). You can adjust or disable it via the environment variables documented above.
 
 ## Demo

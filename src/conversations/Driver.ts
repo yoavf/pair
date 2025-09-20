@@ -1,15 +1,13 @@
 import { EventEmitter } from "node:events";
 import { query } from "@anthropic-ai/claude-code";
-import type { Role } from "../types.js";
+import type { DriverCommand, Role } from "../types.js";
 import type { Logger } from "../utils/logger.js";
-import {
-	type DriverCommand,
-	MockToolParser,
-} from "../utils/navigatorCommands.js";
+import { DRIVER_TOOL_NAMES, driverMcpServer } from "../utils/mcpServers.js";
 import { AsyncUserMessageStream } from "../utils/streamInput.js";
+import { TIMEOUT_CONFIG, TimeoutManager } from "../utils/timeouts.js";
 
 /**
- * Driver agent - implements the plan with navigator feedback
+ * Driver agent - implements the plan with navigator reviews
  */
 type UnknownRecord = Record<string, unknown>;
 
@@ -23,6 +21,8 @@ export class Driver extends EventEmitter {
 	private pendingTexts: string[] = [];
 	private pendingTools: Set<string> = new Set();
 	private pendingToolWaiters: Array<() => void> = [];
+	private driverCommands: DriverCommand[] = [];
+	private toolResults: Map<string, any> = new Map();
 
 	// Optional canUseTool callback for permission-mode gating (SDK dynamic shapes)
 	private canUseTool?: (
@@ -35,7 +35,7 @@ export class Driver extends EventEmitter {
 				updatedInput: UnknownRecord;
 				updatedPermissions?: UnknownRecord;
 		  }
-		| { behavior: "deny"; message: string; interrupt?: boolean }
+		| { behavior: "deny"; message: string }
 	>;
 
 	constructor(
@@ -53,8 +53,9 @@ export class Driver extends EventEmitter {
 					updatedInput: UnknownRecord;
 					updatedPermissions?: UnknownRecord;
 			  }
-			| { behavior: "deny"; message: string; interrupt?: boolean }
+			| { behavior: "deny"; message: string }
 		>,
+		private mcpServerUrl?: string,
 	) {
 		super();
 		this.canUseTool = _canUseTool;
@@ -69,7 +70,7 @@ export class Driver extends EventEmitter {
 			maxTurns: this.maxTurns,
 		});
 
-		const implementMessage = `I have written this plan for you to implement:\n\n${plan}\n\nPlease start implementing this step by step - I will be monitoring and providing feedback as we go.`;
+		const implementMessage = `I have written this plan for you to implement:\n\n${plan}\n\nPlease start implementing this step by step.`;
 
 		try {
 			await this.ensureStreamingQuery();
@@ -78,6 +79,16 @@ export class Driver extends EventEmitter {
 			const batch = await this.waitForBatch();
 			return batch;
 		} catch (error) {
+			if (
+				error instanceof Error &&
+				error.message.includes("Tool results timed out")
+			) {
+				this.logger.logEvent("DRIVER_TOOL_TIMEOUT_RECOVERY", {
+					error: error.message,
+				});
+				// Session is now interrupted and will need to be restarted
+				throw new Error("Driver session interrupted due to tool timeout");
+			}
 			this.logger.logEvent("DRIVER_IMPLEMENTATION_ERROR", {
 				error: error instanceof Error ? error.message : String(error),
 			});
@@ -86,27 +97,35 @@ export class Driver extends EventEmitter {
 	}
 
 	/**
-	 * Continue implementation with navigator feedback
+	 * Continue implementation with prompt
 	 */
-	async continueWithFeedback(feedback: string): Promise<string[]> {
+	async continueWithFeedback(prompt: string): Promise<string[]> {
 		if (!this.sessionId) {
 			throw new Error("Driver not started - call startImplementation() first");
 		}
 
-		this.logger.logEvent("DRIVER_CONTINUING_WITH_FEEDBACK", {
-			feedbackLength: feedback.length,
+		this.logger.logEvent("DRIVER_CONTINUING_WITH_PROMPT", {
+			promptLength: prompt.length,
 			sessionId: this.sessionId,
 		});
 
 		try {
-			// Resume session with navigator feedback
+			// Resume session with prompt
 			await this.ensureStreamingQuery();
 			await this.waitForNoPendingTools();
-			const feedbackMessage = feedback;
-			this.inputStream?.pushText(feedbackMessage);
+			this.inputStream?.pushText(prompt);
 			const batch = await this.waitForBatch();
 			return batch;
 		} catch (error) {
+			if (
+				error instanceof Error &&
+				error.message.includes("Tool results timed out")
+			) {
+				this.logger.logEvent("DRIVER_TOOL_TIMEOUT_RECOVERY", {
+					error: error.message,
+				});
+				throw new Error("Driver session interrupted due to tool timeout");
+			}
 			this.logger.logEvent("DRIVER_FEEDBACK_ERROR", {
 				error: error instanceof Error ? error.message : String(error),
 			});
@@ -115,11 +134,13 @@ export class Driver extends EventEmitter {
 	}
 
 	/**
-	 * Check if messages contain a RequestReview command
+	 * Check if messages contain a RequestReview command (now handled via MCP tools)
+	 * This method will be updated by the orchestration logic to work with MCP tool events
 	 */
-	static hasRequestReview(messages: string[]): DriverCommand | null {
-		const combinedMessage = messages.join("\n");
-		return MockToolParser.parseDriverMessage(combinedMessage);
+	static hasRequestReview(_messages: string[]): DriverCommand | null {
+		// This will be replaced by MCP tool event detection in the orchestration layer
+		// For now, return null since MCP tools handle this communication
+		return null;
 	}
 
 	/**
@@ -150,9 +171,27 @@ export class Driver extends EventEmitter {
 
 	private async ensureStreamingQuery() {
 		if (this.queryIterator) return;
-		const toolsToPass =
+		// Combine standard tools with MCP tools. If 'all' is requested, allow all tools
+		// (built-ins + MCP) by leaving allowedTools undefined.
+		const baseTools =
 			this.allowedTools[0] === "all" ? undefined : this.allowedTools;
+		const toolsToPass: string[] | undefined = baseTools
+			? [...baseTools, ...DRIVER_TOOL_NAMES]
+			: undefined;
+
 		this.inputStream = new AsyncUserMessageStream();
+		const mcpServers = this.mcpServerUrl
+			? { driver: { type: "sse", url: this.mcpServerUrl } as any }
+			: { driver: driverMcpServer };
+		// Log query setup and tool availability
+		try {
+			this.logger.logEvent("DRIVER_QUERY_INIT", {
+				allowedTools: toolsToPass ?? "all",
+				mcpServers,
+				maxTurns: this.maxTurns,
+				hasSystemPrompt: !!this.systemPrompt,
+			});
+		} catch {}
 		this.queryIterator = query({
 			// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK prompt interface expects AsyncIterable
 			prompt: this.inputStream as any,
@@ -160,6 +199,7 @@ export class Driver extends EventEmitter {
 				cwd: this.projectPath,
 				appendSystemPrompt: this.systemPrompt,
 				allowedTools: toolsToPass,
+				mcpServers,
 				permissionMode: "default",
 				maxTurns: this.maxTurns,
 				includePartialMessages: true,
@@ -238,6 +278,13 @@ export class Driver extends EventEmitter {
 										id: toolUseId,
 										tool: item.name,
 									});
+									// Store MCP tool results for driver communication
+									if (item.name.startsWith("mcp__driver__")) {
+										this.toolResults.set(toolUseId, {
+											toolName: item.name,
+											input: item.input,
+										});
+									}
 								}
 								if (
 									item.name === "Write" ||
@@ -259,16 +306,23 @@ export class Driver extends EventEmitter {
 								if (item.name === "Bash" && item.input?.command) {
 									lastBashCmd = String(item.input.command);
 								}
-								// Include a concise tool summary in the text forwarded to navigator
-								const file = item.input?.file_path || item.input?.path || "";
-								const cmd = item.input?.command || "";
-								const toolLine =
-									item.name === "Bash" && cmd
-										? `⚙️  Tool: Bash - ${String(cmd)}`
-										: file
-											? `⚙️  Tool: ${item.name} - ${file}`
-											: `⚙️  Tool: ${item.name}`;
-								fwdText += `${toolLine}\n`;
+								// Include tool summary in forwarded text (except already approved edit tools)
+								const isApprovedEditTool =
+									item.name === "Write" ||
+									item.name === "Edit" ||
+									item.name === "MultiEdit";
+
+								if (!isApprovedEditTool) {
+									const file = item.input?.file_path || item.input?.path || "";
+									const cmd = item.input?.command || "";
+									const toolLine =
+										item.name === "Bash" && cmd
+											? `⚙️  Tool: Bash - ${String(cmd)}`
+											: file
+												? `⚙️  Tool: ${item.name} - ${file}`
+												: `⚙️  Tool: ${item.name}`;
+									fwdText += `${toolLine}\n`;
+								}
 							}
 						}
 						// Debounced verification hints once per batch (only in forwarded text)
@@ -296,16 +350,10 @@ export class Driver extends EventEmitter {
 									id,
 								});
 							}
-							let toForward = consolidatedFwd || consolidatedUI;
+							const toForward = consolidatedFwd || consolidatedUI;
 							if (toForward) {
-								// Add a small directive to encourage verification on the navigator side when edits occurred
-								if (modifiedFiles.length > 0) {
-									const filesList = modifiedFiles.join(", ");
-									toForward += `\n[VERIFY] Read ${filesList} then respond with {{Nod message_id="${id}" comment="verified ${filesList}"}}`;
-								}
-								this.pendingTexts.push(
-									`[[MSG id=${id}]]\n${toForward}\n[[END_MSG]]`,
-								);
+								// Add latest driver message for nav.
+								this.pendingTexts.push(`${toForward}\n`);
 							}
 						}
 					}
@@ -320,6 +368,31 @@ export class Driver extends EventEmitter {
 					if (Array.isArray(ucontent)) {
 						for (const item of ucontent) {
 							if (item.type === "tool_result") {
+								// Log tool_result errors (e.g., missing tools)
+								try {
+									const anyItem: any = item as any;
+									const isErr = (anyItem.is_error ?? anyItem.isError) === true;
+									let errText: string | undefined =
+										typeof anyItem.text === "string" ? anyItem.text : undefined;
+									if (!errText && Array.isArray(anyItem.content)) {
+										const firstText = anyItem.content.find(
+											(c: any) =>
+												c?.type === "text" && typeof c.text === "string",
+										);
+										if (firstText) errText = firstText.text;
+									}
+									if (
+										isErr ||
+										(errText &&
+											/no such tool available|session not found/i.test(errText))
+									) {
+										this.logger.logEvent("DRIVER_TOOL_RESULT_ERROR", {
+											isError: isErr,
+											text: errText,
+											tool_use_id: anyItem.tool_use_id,
+										});
+									}
+								} catch {}
 								// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK tool_result item structure
 								const tid = (item as any).tool_use_id;
 								if (tid && this.pendingTools.has(tid)) {
@@ -332,6 +405,10 @@ export class Driver extends EventEmitter {
 						}
 						if (this.pendingTools.size === 0) {
 							this.resolvePendingToolWaiters();
+
+							// Process MCP driver commands when tools complete
+							this.processDriverCommands();
+
 							// Send intermediate batch when all tools complete to improve navigator responsiveness
 							if (this.pendingTexts.length > 0) {
 								const batch = this.pendingTexts.slice();
@@ -347,6 +424,9 @@ export class Driver extends EventEmitter {
 						}
 					}
 				} else if (message.type === "result") {
+					// Process MCP driver commands on final result
+					this.processDriverCommands();
+
 					const batch = this.pendingTexts.slice();
 					this.pendingTexts = [];
 					const resolver = this.batchResolvers.shift();
@@ -383,21 +463,94 @@ export class Driver extends EventEmitter {
 		}
 	}
 
-	private waitForNoPendingTools(timeoutMs = 15000): Promise<void> {
-		if (this.pendingTools.size === 0) return Promise.resolve();
-		return new Promise((resolve) => {
-			const timer = setTimeout(() => {
+	private waitForNoPendingTools(
+		timeoutMs = TIMEOUT_CONFIG.TOOL_COMPLETION,
+	): Promise<void> {
+		return TimeoutManager.createWaiterTimeout(
+			() => this.pendingTools.size === 0,
+			async () => {
 				this.logger.logEvent("DRIVER_PENDING_TOOL_TIMEOUT", {
 					pendingCount: this.pendingTools.size,
 					ids: Array.from(this.pendingTools),
 				});
-				resolve();
-			}, timeoutMs);
-			this.pendingToolWaiters.push(() => {
-				clearTimeout(timer);
-				resolve();
-			});
-		});
+				// Interrupt the query to prevent malformed message streams
+				try {
+					// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK query interrupt method
+					if (this.queryIterator && (this.queryIterator as any).interrupt) {
+						// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK query interrupt method
+						await (this.queryIterator as any).interrupt();
+					}
+				} catch (error) {
+					this.logger.logEvent("DRIVER_QUERY_INTERRUPT_ERROR", {
+						error: error instanceof Error ? error.message : String(error),
+					});
+				}
+				throw new Error(
+					`Tool results timed out after ${timeoutMs}ms. Pending tools: ${Array.from(this.pendingTools).join(", ")}`,
+				);
+			},
+			timeoutMs,
+			(callback) => this.pendingToolWaiters.push(callback),
+		);
+	}
+
+	/**
+	 * Process MCP driver commands from tool results
+	 */
+	private processDriverCommands(): void {
+		for (const [toolId, toolData] of this.toolResults) {
+			if (this.pendingTools.has(toolId)) continue; // Wait for tool_result
+
+			const cmd = this.convertMcpToolToDriverCommand(
+				toolData.toolName,
+				toolData.input,
+			);
+			if (cmd) {
+				this.driverCommands.push(cmd);
+				this.logger.logEvent("DRIVER_MCP_COMMAND", {
+					type: cmd.type,
+					context: cmd.context,
+				});
+			}
+		}
+		// Clear processed tool results
+		for (const toolId of this.toolResults.keys()) {
+			if (!this.pendingTools.has(toolId)) {
+				this.toolResults.delete(toolId);
+			}
+		}
+	}
+
+	/**
+	 * Convert MCP tool call to DriverCommand
+	 */
+	private convertMcpToolToDriverCommand(
+		toolName: string,
+		input: any,
+	): DriverCommand | null {
+		switch (toolName) {
+			case "mcp__driver__driverRequestReview":
+				return {
+					type: "request_review",
+					context: input.context,
+				};
+			case "mcp__driver__driverRequestGuidance":
+				return {
+					type: "request_guidance",
+					context: input.context,
+				};
+			default:
+				return null;
+		}
+	}
+
+	/**
+	 * Get and clear any pending driver commands (for orchestration layer)
+	 */
+	public getAndClearDriverCommands(): DriverCommand[] {
+		const commands = this.driverCommands.slice();
+		this.driverCommands = [];
+		return commands;
 	}
 
 	public async stop(): Promise<void> {
@@ -411,22 +564,8 @@ export class Driver extends EventEmitter {
 		} catch {}
 	}
 
-	/**
-	 * Push navigator feedback directly into the driver session without waiting for a batch.
-	 * Useful for permission decisions so the model knows why access was denied/approved.
-	 */
-	public pushNavigatorFeedback(text: string): void {
-		if (!text || !this.inputStream) return;
-		const feedbackMessage = text;
-		try {
-			this.inputStream.pushText(feedbackMessage);
-			this.logger.logEvent("DRIVER_NAVIGATOR_FEEDBACK_PUSHED", {
-				length: text.length,
-			});
-		} catch (err) {
-			this.logger.logEvent("DRIVER_NAVIGATOR_FEEDBACK_PUSH_ERROR", {
-				error: err instanceof Error ? err.message : String(err),
-			});
-		}
+	// Expose pending tool state to orchestrator
+	public hasPendingTools(): boolean {
+		return this.pendingTools.size > 0;
 	}
 }
