@@ -14,6 +14,16 @@ import {
 	navigatorDeny,
 } from "./mcpTools.js";
 
+// Tool arrays for deriving names (to prevent tool/name mismatches)
+const navigatorTools = [
+	navigatorCodeReview,
+	navigatorComplete,
+	navigatorApprove,
+	navigatorDeny,
+];
+
+const driverTools = [driverRequestReview, driverRequestGuidance];
+
 /**
  * MCP server for Navigator communication tools
  * Provides tools for code review, approval/denial, and completion
@@ -21,12 +31,7 @@ import {
 export const navigatorMcpServer = createSdkMcpServer({
 	name: "navigator",
 	version: "1.0.0",
-	tools: [
-		navigatorCodeReview,
-		navigatorComplete,
-		navigatorApprove,
-		navigatorDeny,
-	],
+	tools: navigatorTools,
 });
 
 /**
@@ -36,23 +41,19 @@ export const navigatorMcpServer = createSdkMcpServer({
 export const driverMcpServer = createSdkMcpServer({
 	name: "driver",
 	version: "1.0.0",
-	tools: [driverRequestReview, driverRequestGuidance],
+	tools: driverTools,
 });
 
 /**
- * Tool names for Navigator (for allowedTools configuration)
+ * Tool names for Navigator (derived from tool definitions to prevent mismatches)
  */
-export const NAVIGATOR_TOOL_NAMES = [
-	"mcp__navigator__navigatorCodeReview",
-	"mcp__navigator__navigatorComplete",
-	"mcp__navigator__navigatorApprove",
-	"mcp__navigator__navigatorDeny",
-] as const;
+export const NAVIGATOR_TOOL_NAMES = navigatorTools
+	.map((tool) => tool?.name)
+	.filter(Boolean);
 
 /**
- * Tool names for Driver (for allowedTools configuration)
+ * Tool names for Driver (derived from tool definitions to prevent mismatches)
  */
-export const DRIVER_TOOL_NAMES = [
-	"mcp__driver__driverRequestReview",
-	"mcp__driver__driverRequestGuidance",
-] as const;
+export const DRIVER_TOOL_NAMES = driverTools
+	.map((tool) => tool?.name)
+	.filter(Boolean);
