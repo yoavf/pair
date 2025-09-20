@@ -158,11 +158,11 @@ describe("Permission Flow", () => {
 
 			expect(navigator.getSessionId()).toBeNull();
 
-			await navigator.reviewPermission(
-				"Test message",
-				"Edit",
-				{ file_path: "test.ts" }
-			);
+			await navigator.reviewPermission({
+				driverTranscript: "Test message",
+				toolName: "Edit",
+				input: { file_path: "test.ts" }
+			});
 
 			expect(navigator.getSessionId()).toBe("mock-session-123");
 		});
