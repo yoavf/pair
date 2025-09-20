@@ -58,10 +58,10 @@ describe.skipIf(!integrationTestsEnabled)("Integration Tests", () => {
 
   it("should handle a review request triggered by driver tool call", async () => {
     // Call the actual driverRequestReview tool handler to simulate real flow
-    const toolResult = await driverRequestReview.handler({ context: "I added a hello world function" });
+    const toolResult = await driverRequestReview.handler({ context: "I added a hello world function" }, null);
 
     // Extract the message that would be sent to Navigator
-    const reviewMessage = toolResult.content[0]?.text || "Driver requesting review";
+    const reviewMessage = typeof toolResult.content[0]?.text === "string" ? toolResult.content[0].text : "Driver requesting review";
 
     const commands = await navigator.processDriverMessage(reviewMessage);
 
