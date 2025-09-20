@@ -11,7 +11,7 @@ import type {
 	PermissionRequest,
 	PermissionResult,
 } from "../types/permission.js";
-import type { NavigatorCommand, Role } from "../types.js";
+import type { NavigatorCommand, NavigatorCommandType, Role } from "../types.js";
 import type { Logger } from "../utils/logger.js";
 import {
 	NAVIGATOR_TOOL_NAMES,
@@ -37,6 +37,11 @@ CRITICAL: You MUST respond with EXACTLY ONE MCP tool call:
 - mcp__navigator__navigatorComplete with summary="what was accomplished"
 
 Only mcp__navigator__navigatorCodeReview OR mcp__navigator__navigatorComplete. No text.`;
+
+// Permission decision type using proper NavigatorCommandType subset
+type PermissionDecisionType =
+	| Extract<NavigatorCommandType, "approve" | "deny">
+	| "none";
 
 /**
  * Navigator agent - monitors driver implementation and reviews code
@@ -339,7 +344,7 @@ export class Navigator extends EventEmitter {
 	}
 
 	private extractPermissionDecision(commands: NavigatorCommand[]): {
-		type: "approve" | "deny" | "none";
+		type: PermissionDecisionType;
 		comment?: string;
 	} {
 		for (const cmd of commands) {

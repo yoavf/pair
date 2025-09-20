@@ -92,14 +92,12 @@ export async function startPairMcpServer(
 								role: "navigator",
 								error: "Missing sessionId after connect",
 							});
-							res
-								.writeHead(500, { "Content-Type": "application/json" })
-								.end(
-									JSON.stringify({
-										error:
-											"Failed to establish MCP connection: missing sessionId",
-									}),
-								);
+							res.writeHead(500, { "Content-Type": "application/json" }).end(
+								JSON.stringify({
+									error:
+										"Failed to establish MCP connection: missing sessionId",
+								}),
+							);
 							return;
 						}
 						navTransports.set(transport.sessionId, transport);
@@ -169,14 +167,12 @@ export async function startPairMcpServer(
 								role: "driver",
 								error: "Missing sessionId after connect",
 							});
-							res
-								.writeHead(500, { "Content-Type": "application/json" })
-								.end(
-									JSON.stringify({
-										error:
-											"Failed to establish MCP connection: missing sessionId",
-									}),
-								);
+							res.writeHead(500, { "Content-Type": "application/json" }).end(
+								JSON.stringify({
+									error:
+										"Failed to establish MCP connection: missing sessionId",
+								}),
+							);
 							return;
 						}
 						drvTransports.set(transport.sessionId, transport);
