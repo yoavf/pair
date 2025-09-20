@@ -84,26 +84,54 @@ export async function startPairMcpServer(
 						"/mcp/navigator/message",
 						res,
 					);
-					// connect() starts the transport; do not call start() again
-					await navigatorServer.connect(transport);
-					navTransports.set(transport.sessionId, transport);
 					try {
-						logger?.logEvent("MCP_SSE_CONNECTED", {
-							role: "navigator",
-							sessionId: transport.sessionId,
-						});
-					} catch {}
-					// Clean up when SSE closes
-					transport.onclose = () => {
-						navTransports.delete(transport.sessionId);
+						// connect() starts the transport; do not call start() again
+						await navigatorServer.connect(transport);
+						if (!transport.sessionId) {
+							logger?.logEvent("MCP_SSE_CONNECT_ERROR", {
+								role: "navigator",
+								error: "Missing sessionId after connect",
+							});
+							res
+								.writeHead(500, { "Content-Type": "application/json" })
+								.end(
+									JSON.stringify({
+										error:
+											"Failed to establish MCP connection: missing sessionId",
+									}),
+								);
+							return;
+						}
+						navTransports.set(transport.sessionId, transport);
 						try {
-							logger?.logEvent("MCP_SSE_CLOSED", {
+							logger?.logEvent("MCP_SSE_CONNECTED", {
 								role: "navigator",
 								sessionId: transport.sessionId,
 							});
 						} catch {}
-					};
-					return; // leave connection open
+						// Clean up when SSE closes
+						transport.onclose = () => {
+							navTransports.delete(transport.sessionId);
+							try {
+								logger?.logEvent("MCP_SSE_CLOSED", {
+									role: "navigator",
+									sessionId: transport.sessionId,
+								});
+							} catch {}
+						};
+						return; // leave connection open
+					} catch (err) {
+						logger?.logEvent("MCP_SSE_CONNECT_ERROR", {
+							role: "navigator",
+							error: err instanceof Error ? err.message : String(err),
+						});
+						res
+							.writeHead(500, { "Content-Type": "application/json" })
+							.end(
+								JSON.stringify({ error: "Failed to establish MCP connection" }),
+							);
+						return;
+					}
 				}
 				// Navigator POST message endpoint
 				if (req.method === "POST" && pathname === "/mcp/navigator/message") {
@@ -133,25 +161,53 @@ export async function startPairMcpServer(
 				// Driver SSE handshake
 				if (req.method === "GET" && pathname === "/mcp/driver") {
 					const transport = new SSEServerTransport("/mcp/driver/message", res);
-					// connect() starts the transport; do not call start() again
-					await driverServer.connect(transport);
-					drvTransports.set(transport.sessionId, transport);
 					try {
-						logger?.logEvent("MCP_SSE_CONNECTED", {
-							role: "driver",
-							sessionId: transport.sessionId,
-						});
-					} catch {}
-					transport.onclose = () => {
-						drvTransports.delete(transport.sessionId);
+						// connect() starts the transport; do not call start() again
+						await driverServer.connect(transport);
+						if (!transport.sessionId) {
+							logger?.logEvent("MCP_SSE_CONNECT_ERROR", {
+								role: "driver",
+								error: "Missing sessionId after connect",
+							});
+							res
+								.writeHead(500, { "Content-Type": "application/json" })
+								.end(
+									JSON.stringify({
+										error:
+											"Failed to establish MCP connection: missing sessionId",
+									}),
+								);
+							return;
+						}
+						drvTransports.set(transport.sessionId, transport);
 						try {
-							logger?.logEvent("MCP_SSE_CLOSED", {
+							logger?.logEvent("MCP_SSE_CONNECTED", {
 								role: "driver",
 								sessionId: transport.sessionId,
 							});
 						} catch {}
-					};
-					return;
+						transport.onclose = () => {
+							drvTransports.delete(transport.sessionId);
+							try {
+								logger?.logEvent("MCP_SSE_CLOSED", {
+									role: "driver",
+									sessionId: transport.sessionId,
+								});
+							} catch {}
+						};
+						return;
+					} catch (err) {
+						logger?.logEvent("MCP_SSE_CONNECT_ERROR", {
+							role: "driver",
+							error: err instanceof Error ? err.message : String(err),
+						});
+						res
+							.writeHead(500, { "Content-Type": "application/json" })
+							.end(
+								JSON.stringify({ error: "Failed to establish MCP connection" }),
+							);
+						return;
+					}
 				}
 				// Driver POST message endpoint
 				if (req.method === "POST" && pathname === "/mcp/driver/message") {
