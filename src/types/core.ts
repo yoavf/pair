@@ -13,9 +13,10 @@ export const ALL_TOOLS_MARKER = "all" as const;
 
 /**
  * Helper function to check if allowedTools array represents "all tools"
+ * Empty array or array starting with "all" means all tools enabled
  */
 export function isAllToolsEnabled(allowedTools: string[]): boolean {
-	return allowedTools.length > 0 && allowedTools[0] === ALL_TOOLS_MARKER;
+	return allowedTools.length === 0 || allowedTools[0] === ALL_TOOLS_MARKER;
 }
 
 /**

@@ -214,6 +214,28 @@ export interface ExternalAgentProvider extends AgentProvider {
 }
 
 /**
+ * MCP Server configuration for Claude Code SDK
+ */
+export interface McpServerConfig {
+	type: "sse" | "stdio";
+	url?: string;
+	command?: string;
+	args?: string[];
+}
+
+/**
+ * Type alias for canUseTool function from SessionOptions
+ */
+export type CanUseToolFunction = NonNullable<SessionOptions["canUseTool"]>;
+
+/**
+ * Type alias for canUseTool function from StreamingSessionOptions
+ */
+export type StreamingCanUseToolFunction = NonNullable<
+	StreamingSessionOptions["canUseTool"]
+>;
+
+/**
  * Type guard to check if a provider is embedded
  */
 export function isEmbeddedProvider(

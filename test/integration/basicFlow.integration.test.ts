@@ -11,6 +11,14 @@ import { driverRequestReview } from "../../src/utils/mcpTools.js";
 import { startPairMcpServer, type PairMcpServer } from "../../src/mcp/httpServer.js";
 import { ClaudeCodeProvider } from "../../src/providers/embedded/claudeCode.js";
 
+/**
+ * Helper function to extract text content from a tool result content item
+ */
+function extractTextContent(contentItem: any): string | undefined {
+  return contentItem && 'text' in contentItem && typeof contentItem.text === 'string'
+    ? contentItem.text
+    : undefined;
+}
 
 // Only run integration tests if enabled
 const integrationTestsEnabled = process.env.RUN_INTEGRATION_TESTS;
@@ -100,7 +108,7 @@ describe.skipIf(!integrationTestsEnabled)("Navigator Integration Tests", () => {
 
     // Extract the message that would be sent to Navigator
     const contentItem = toolResult.content[0];
-    const reviewMessage = (contentItem && 'text' in contentItem && typeof contentItem.text === 'string' ? contentItem.text : undefined) || "Driver requesting review";
+    const reviewMessage = extractTextContent(contentItem) || "Driver requesting review";
 
     const commands = await navigator.processDriverMessage(reviewMessage);
 

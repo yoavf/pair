@@ -12,8 +12,11 @@ import type {
 	AgentInputStream,
 	AgentMessage,
 	AgentSession,
+	CanUseToolFunction,
+	McpServerConfig,
 	SessionOptions,
 	StreamingAgentSession,
+	StreamingCanUseToolFunction,
 	StreamingSessionOptions,
 } from "../types.js";
 import { BaseEmbeddedProvider } from "./base.js";
@@ -31,6 +34,7 @@ class ClaudeCodeSession implements AgentSession {
 		this.inputStream = new AsyncUserMessageStream();
 
 		// Configure MCP servers for communication (only for Navigator/Driver)
+		// Note: Using 'as any' due to Claude Code SDK internal type differences
 		const mcpServers = options.role
 			? {
 					[options.role]: {
@@ -50,6 +54,7 @@ class ClaudeCodeSession implements AgentSession {
 			permissionMode: options.permissionMode || "default",
 			maxTurns: options.maxTurns,
 			includePartialMessages: options.includePartialMessages ?? true,
+			// Note: Claude Code SDK has different type signature than our interface
 			canUseTool: options.canUseTool as any,
 		};
 
@@ -136,6 +141,7 @@ class ClaudeCodeStreamingSession implements StreamingAgentSession {
 			: undefined;
 
 		// Configure MCP servers (embedded vs HTTP/SSE)
+		// Note: Using 'as any' for HTTP/SSE config due to Claude Code SDK internal type differences
 		const mcpServers = options.mcpServerUrl
 			? { [options.mcpRole]: { type: "sse", url: options.mcpServerUrl } as any }
 			: { [options.mcpRole]: options.embeddedMcpServer };
@@ -152,6 +158,7 @@ class ClaudeCodeStreamingSession implements StreamingAgentSession {
 				permissionMode: "default",
 				maxTurns: options.maxTurns,
 				includePartialMessages: options.includePartialMessages ?? true,
+				// Note: Claude Code SDK has different type signature than our interface
 				canUseTool: options.canUseTool as any,
 			},
 		}) as AsyncGenerator<any, void>;
