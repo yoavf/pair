@@ -18,6 +18,20 @@ export function isAllToolsEnabled(allowedTools: string[]): boolean {
 	return allowedTools.length > 0 && allowedTools[0] === ALL_TOOLS_MARKER;
 }
 
+/**
+ * File modification tools that require special handling
+ */
+export const FILE_MODIFICATION_TOOLS = ["Write", "Edit", "MultiEdit"] as const;
+
+/**
+ * Type guard to check if a tool is a file modification tool
+ */
+export function isFileModificationTool(
+	toolName: string,
+): toolName is (typeof FILE_MODIFICATION_TOOLS)[number] {
+	return FILE_MODIFICATION_TOOLS.includes(toolName as any);
+}
+
 export interface Message {
 	role: "user" | "assistant" | "system";
 	content: string;

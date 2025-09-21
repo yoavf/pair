@@ -16,6 +16,7 @@ import { type PairMcpServer, startPairMcpServer } from "./mcp/httpServer.js";
 import { agentProviderFactory } from "./providers/factory.js";
 import type { EmbeddedAgentProvider } from "./providers/types.js";
 import { isEmbeddedProvider } from "./providers/types.js";
+import { isFileModificationTool } from "./types/core.js";
 import {
 	NavigatorSessionError,
 	PermissionDeniedError,
@@ -230,8 +231,7 @@ class ClaudePairApp {
 			  }
 			| { behavior: "deny"; message: string }
 		> => {
-			const needsApproval =
-				toolName === "Write" || toolName === "Edit" || toolName === "MultiEdit";
+			const needsApproval = isFileModificationTool(toolName);
 
 			if (!needsApproval) {
 				return { behavior: "allow", updatedInput: input };

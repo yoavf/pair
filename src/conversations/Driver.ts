@@ -4,7 +4,7 @@ import type {
 	EmbeddedAgentProvider,
 	StreamingAgentSession,
 } from "../providers/types.js";
-import { isAllToolsEnabled } from "../types/core.js";
+import { isAllToolsEnabled, isFileModificationTool } from "../types/core.js";
 import type { DriverCommand, Role } from "../types.js";
 import type { Logger } from "../utils/logger.js";
 import { DRIVER_TOOL_NAMES, driverMcpServer } from "../utils/mcpServers.js";
@@ -288,11 +288,7 @@ export class Driver extends EventEmitter {
 										});
 									}
 								}
-								if (
-									item.name === "Write" ||
-									item.name === "Edit" ||
-									item.name === "MultiEdit"
-								) {
+								if (item.name && isFileModificationTool(item.name)) {
 									const fileName = item.input?.file_path || "file";
 									this.logger.logEvent("DRIVER_FILE_MODIFIED", {
 										tool: item.name,
