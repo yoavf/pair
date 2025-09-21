@@ -23,6 +23,15 @@ export interface AppConfig {
 
 	/** Enable sync status updates in footer (default: true) */
 	enableSyncStatus: boolean;
+
+	/** Provider type for architect agent (default: "claude-code") */
+	architectProvider: string;
+
+	/** Provider type for navigator agent (default: "claude-code") */
+	navigatorProvider: string;
+
+	/** Provider type for driver agent (default: "claude-code") */
+	driverProvider: string;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -33,6 +42,9 @@ export const DEFAULT_CONFIG: AppConfig = {
 	model: undefined, // Use CLI default
 	sessionHardLimitMs: 30 * 60 * 1000, // 30 minutes
 	enableSyncStatus: true, // Enable by default
+	architectProvider: "claude-code",
+	navigatorProvider: "claude-code",
+	driverProvider: "claude-code",
 };
 
 /**
@@ -59,6 +71,14 @@ export function loadConfig(): AppConfig {
 			60 *
 			1000,
 		enableSyncStatus: process.env.CLAUDE_PAIR_DISABLE_SYNC_STATUS !== "true",
+		architectProvider:
+			process.env.CLAUDE_PAIR_ARCHITECT_PROVIDER ||
+			DEFAULT_CONFIG.architectProvider,
+		navigatorProvider:
+			process.env.CLAUDE_PAIR_NAVIGATOR_PROVIDER ||
+			DEFAULT_CONFIG.navigatorProvider,
+		driverProvider:
+			process.env.CLAUDE_PAIR_DRIVER_PROVIDER || DEFAULT_CONFIG.driverProvider,
 	};
 
 	return config;
@@ -67,7 +87,10 @@ export function loadConfig(): AppConfig {
 /**
  * Validate configuration values
  */
-export function validateConfig(config: AppConfig): void {
+export function validateConfig(
+	config: AppConfig,
+	availableProviders?: string[],
+): void {
 	if (config.navigatorMaxTurns < 10 || config.navigatorMaxTurns > 100) {
 		throw new Error("Navigator max turns must be between 10 and 100");
 	}
@@ -94,5 +117,22 @@ export function validateConfig(config: AppConfig): void {
 		config.sessionHardLimitMs > 8 * 60 * 60 * 1000
 	) {
 		throw new Error("Session hard limit must be between 1 minute and 8 hours");
+	}
+
+	// Validate provider types if available providers list is provided
+	if (availableProviders) {
+		const providers = [
+			{ name: "architect", type: config.architectProvider },
+			{ name: "navigator", type: config.navigatorProvider },
+			{ name: "driver", type: config.driverProvider },
+		];
+
+		for (const provider of providers) {
+			if (!availableProviders.includes(provider.type)) {
+				throw new Error(
+					`Unknown ${provider.name} provider type: "${provider.type}". Available providers: ${availableProviders.join(", ")}`,
+				);
+			}
+		}
 	}
 }

@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import type { Message, PairProgrammingState } from "../types.js";
+import type { Message, PairProgrammingState, SessionPhase } from "../types.js";
 
 export const useMessages = (projectPath: string, initialTask: string) => {
 	const [state, setState] = useState<PairProgrammingState>({
@@ -40,12 +40,9 @@ export const useMessages = (projectPath: string, initialTask: string) => {
 		setState((prev) => ({ ...prev, currentActivity: activity }));
 	}, []);
 
-	const setPhase = useCallback(
-		(phase: "planning" | "execution" | "review" | "complete") => {
-			setState((prev) => ({ ...prev, phase }));
-		},
-		[],
-	);
+	const setPhase = useCallback((phase: SessionPhase) => {
+		setState((prev) => ({ ...prev, phase }));
+	}, []);
 
 	const setQuitState = useCallback((quitState: "normal" | "confirm") => {
 		setState((prev) => ({ ...prev, quitState }));

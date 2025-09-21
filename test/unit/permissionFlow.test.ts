@@ -13,6 +13,7 @@ import {
 	PermissionMalformedError,
 	NavigatorSessionError
 } from "../../src/types/errors.js";
+import type { EmbeddedAgentProvider } from "../../src/providers/types.js";
 
 // Mock the Claude Code SDK module
 vi.mock("@anthropic-ai/claude-code", () => ({
@@ -32,6 +33,7 @@ describe("Permission Flow", () => {
 	let mockSdk: MockClaudeCodeSdk;
 	let navigator: Navigator;
 	let mockLogger: Logger;
+	let mockProvider: EmbeddedAgentProvider;
 
 	beforeEach(async () => {
 		mockSdk = new MockClaudeCodeSdk();
@@ -41,6 +43,22 @@ describe("Permission Flow", () => {
 			close: vi.fn(),
 		} as any;
 
+		// Create mock provider
+		mockProvider = {
+			name: "mock-provider",
+			type: "embedded",
+			createSession: vi.fn(),
+			createStreamingSession: vi.fn().mockReturnValue({
+				sessionId: null,
+				inputStream: {
+					pushText: vi.fn(),
+					end: vi.fn(),
+				},
+				[Symbol.asyncIterator]: vi.fn(),
+				interrupt: vi.fn(),
+			}),
+		} as any;
+
 		// Create navigator with test configuration
 		navigator = new Navigator(
 			"Test navigator prompt",
@@ -48,11 +66,23 @@ describe("Permission Flow", () => {
 			10,
 			"/test/project",
 			mockLogger,
+			mockProvider,
 		);
 
-		// Mock the query function to use our mock SDK
-		const { query } = await vi.importMock("@anthropic-ai/claude-code");
-		query.mockImplementation((...args: any[]) => mockSdk.query(...args));
+		// Configure mock provider to use our mock SDK
+		mockProvider.createStreamingSession = vi.fn().mockReturnValue({
+			sessionId: null,
+			inputStream: {
+				pushText: vi.fn(),
+				end: vi.fn(),
+			},
+			[Symbol.asyncIterator]: async function* () {
+				for await (const message of mockSdk.query({ prompt: "test" })) {
+					yield message;
+				}
+			},
+			interrupt: vi.fn(),
+		});
 	});
 
 	afterEach(() => {
@@ -204,12 +234,21 @@ describe("Navigator Command Parsing", () => {
 			close: vi.fn(),
 		} as any;
 
+		// Create mock provider for this test block
+		const mockProvider: EmbeddedAgentProvider = {
+			name: "mock-provider",
+			type: "embedded",
+			createSession: vi.fn(),
+			createStreamingSession: vi.fn(),
+		} as any;
+
 		navigator = new Navigator(
 			"Test navigator prompt",
 			["Read"],
 			10,
 			"/test/project",
 			mockLogger,
+			mockProvider,
 		);
 	});
 

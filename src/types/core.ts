@@ -4,6 +4,35 @@
 
 export type Role = "navigator" | "driver" | "architect";
 
+export type SessionPhase = "planning" | "execution" | "review" | "complete";
+
+/**
+ * Constant representing "allow all tools" in allowedTools arrays
+ */
+export const ALL_TOOLS_MARKER = "all" as const;
+
+/**
+ * Helper function to check if allowedTools array represents "all tools"
+ * Empty array or array starting with "all" means all tools enabled
+ */
+export function isAllToolsEnabled(allowedTools: string[]): boolean {
+	return allowedTools.length === 0 || allowedTools[0] === ALL_TOOLS_MARKER;
+}
+
+/**
+ * File modification tools that require special handling
+ */
+export const FILE_MODIFICATION_TOOLS = ["Write", "Edit", "MultiEdit"] as const;
+
+/**
+ * Type guard to check if a tool is a file modification tool
+ */
+export function isFileModificationTool(
+	toolName: string,
+): toolName is (typeof FILE_MODIFICATION_TOOLS)[number] {
+	return FILE_MODIFICATION_TOOLS.includes(toolName as any);
+}
+
 export interface Message {
 	role: "user" | "assistant" | "system";
 	content: string;
@@ -36,7 +65,7 @@ export interface PairProgrammingState {
 	navigatorMessages: Message[];
 	driverMessages: Message[];
 	currentActivity: string;
-	phase?: "planning" | "execution" | "review" | "complete";
+	phase?: SessionPhase;
 	quitState?: "normal" | "confirm";
 }
 

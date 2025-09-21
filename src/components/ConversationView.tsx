@@ -1,6 +1,6 @@
 import { Box, Text } from "ink";
 import React, { useCallback, useMemo } from "react";
-import type { Message } from "../types.js";
+import type { Message, SessionPhase } from "../types.js";
 import DriverMessage from "./DriverMessage.js";
 import GenericMessage from "./GenericMessage.js";
 import NavigatorMessage from "./NavigatorMessage.js";
@@ -8,12 +8,12 @@ import SystemMessage from "./SystemMessage.js";
 
 interface Props {
 	messages: Message[];
-	phase?: "planning" | "execution" | "review" | "complete";
+	phase?: SessionPhase;
 }
 
 const ConversationView: React.FC<Props> = React.memo(({ messages, phase }) => {
 	// Layout constants - max 88 characters per line
-	const MAX_LINE_WIDTH = 88;
+	const _MAX_LINE_WIDTH = 88;
 	const DRIVER_WIDTH = 84; // characters for driver messages
 	const SYSTEM_WIDTH = 88; // characters for system messages
 	const SEPARATOR = "-".repeat(60);

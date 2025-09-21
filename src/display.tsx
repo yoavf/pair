@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import ErrorBoundary from "./components/ErrorBoundary.js";
 import PairProgrammingApp from "./components/PairProgrammingApp.js";
 import { useMessages } from "./hooks/useMessages.js";
-import type { Message, Role } from "./types.js";
+import type { Message, Role, SessionPhase } from "./types.js";
 import type { AppConfig } from "./utils/config.js";
 import { formatSystemLine } from "./utils/systemLine.js";
 
@@ -27,17 +27,14 @@ export class InkDisplayManager {
 	private addMessage?: (message: Message) => void;
 	private updateActivity?: (activity: string) => void;
 	// Removed role switching/time remaining helpers
-	private setPhaseFn?: (
-		phase: "planning" | "execution" | "review" | "complete",
-	) => void;
+	private setPhaseFn?: (phase: SessionPhase) => void;
 	private setQuitStateFn?: (quitState: "normal" | "confirm") => void;
+	private currentPhase?: SessionPhase;
 	private firstCtrlCPressed = false;
 	private confirmExitTimer?: NodeJS.Timeout;
 	private syncTicker?: NodeJS.Timeout;
 	private config!: AppConfig;
 	private projectPath: string = process.cwd();
-	private currentPhase: "planning" | "execution" | "review" | "complete" =
-		"planning";
 
 	start(
 		projectPath: string,
@@ -305,13 +302,36 @@ export class InkDisplayManager {
 	}
 
 	showCompletionMessage(summary?: string) {
-		const message = summary
-			? `✅ Task Complete!\n\n${summary}`
-			: "✅ Task Complete! Navigator has marked the implementation as finished.";
+		// Add horizontal separator
+		const separatorMessage: Message = {
+			role: "system",
+			content: "─".repeat(80),
+			timestamp: new Date(),
+			sessionRole: "navigator",
+			symbol: "",
+		};
+		this.appendMessage(separatorMessage);
 
-		console.log("\n" + "=".repeat(60));
-		console.log(message);
-		console.log("=".repeat(60) + "\n");
+		// Add title with green checkmark
+		const titleMessage: Message = {
+			role: "system",
+			content: "✅ Task completed:",
+			timestamp: new Date(),
+			sessionRole: "navigator",
+			symbol: "",
+		};
+		this.appendMessage(titleMessage);
+
+		// Add completion summary
+		const completionText =
+			summary || "Navigator has marked the implementation as finished.";
+		const summaryMessage: Message = {
+			role: "assistant",
+			content: completionText,
+			timestamp: new Date(),
+			sessionRole: "navigator",
+		};
+		this.appendMessage(summaryMessage);
 	}
 
 	cleanup() {
@@ -322,7 +342,7 @@ export class InkDisplayManager {
 		if (this.confirmExitTimer) clearTimeout(this.confirmExitTimer);
 	}
 
-	public setPhase(phase: "planning" | "execution" | "review" | "complete") {
+	public setPhase(phase: SessionPhase) {
 		if (this.setPhaseFn) {
 			this.setPhaseFn(phase);
 		}

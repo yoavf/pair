@@ -13,6 +13,10 @@ import { Driver } from "./conversations/Driver.js";
 import { Navigator } from "./conversations/Navigator.js";
 import { InkDisplayManager } from "./display.js";
 import { type PairMcpServer, startPairMcpServer } from "./mcp/httpServer.js";
+import { agentProviderFactory } from "./providers/factory.js";
+import type { EmbeddedAgentProvider } from "./providers/types.js";
+import { isEmbeddedProvider } from "./providers/types.js";
+import { isFileModificationTool } from "./types/core.js";
 import {
 	NavigatorSessionError,
 	PermissionDeniedError,
@@ -137,7 +141,7 @@ class ClaudePairApp {
 		private task: string,
 	) {
 		const appConfig = loadConfig();
-		validateConfig(appConfig);
+		validateConfig(appConfig, agentProviderFactory.getAvailableProviders());
 		this.appConfig = appConfig;
 
 		this.config.projectPath = projectPath;
@@ -168,13 +172,29 @@ class ClaudePairApp {
 		const drvUrl = this.mcp.urls.driver;
 		this.logger.logEvent("APP_MCP_URLS", { navUrl, drvUrl });
 
-		// Create simple agents
+		// Create providers for all agents
+		const architectProvider = agentProviderFactory.createProvider({
+			type: this.appConfig.architectProvider,
+		}) as EmbeddedAgentProvider;
+
+		const navigatorProvider = agentProviderFactory.createProvider({
+			type: this.appConfig.navigatorProvider,
+		}) as EmbeddedAgentProvider;
+
+		const driverProvider = agentProviderFactory.createProvider({
+			type: this.appConfig.driverProvider,
+		}) as EmbeddedAgentProvider;
+
+		// Create agents with providers
 		this.architect = new Architect(
 			PLANNING_NAVIGATOR_PROMPT,
 			["Read", "Grep", "Glob", "WebSearch", "WebFetch", "TodoWrite", "Bash"],
 			TURN_LIMITS.ARCHITECT,
 			this.projectPath,
 			this.logger,
+			architectProvider,
+			// Architect doesn't use MCP server, but we can pass empty string
+			"",
 		);
 
 		this.navigator = new Navigator(
@@ -194,6 +214,7 @@ class ClaudePairApp {
 			this.appConfig.navigatorMaxTurns,
 			this.projectPath,
 			this.logger,
+			navigatorProvider,
 			navUrl,
 		);
 
@@ -201,7 +222,7 @@ class ClaudePairApp {
 		const canUseTool = async (
 			toolName: string,
 			input: Record<string, unknown>,
-			options?: { suggestions?: Record<string, unknown> },
+			_options?: { suggestions?: Record<string, unknown> },
 		): Promise<
 			| {
 					behavior: "allow";
@@ -210,8 +231,7 @@ class ClaudePairApp {
 			  }
 			| { behavior: "deny"; message: string }
 		> => {
-			const needsApproval =
-				toolName === "Write" || toolName === "Edit" || toolName === "MultiEdit";
+			const needsApproval = isFileModificationTool(toolName);
 
 			if (!needsApproval) {
 				return { behavior: "allow", updatedInput: input };
@@ -262,6 +282,7 @@ class ClaudePairApp {
 			this.appConfig.driverMaxTurns,
 			this.projectPath,
 			this.logger,
+			driverProvider,
 			canUseTool,
 			drvUrl,
 		);
@@ -740,7 +761,7 @@ function showHelp(): void {
 async function main(): Promise<void> {
 	try {
 		const config = loadConfig();
-		validateConfig(config);
+		validateConfig(config, agentProviderFactory.getAvailableProviders());
 
 		const args = process.argv.slice(2);
 
