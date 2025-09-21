@@ -4,6 +4,8 @@
 
 export type Role = "navigator" | "driver" | "architect";
 
+export type SessionPhase = "planning" | "execution" | "review" | "complete";
+
 export interface Message {
 	role: "user" | "assistant" | "system";
 	content: string;
@@ -36,7 +38,7 @@ export interface PairProgrammingState {
 	navigatorMessages: Message[];
 	driverMessages: Message[];
 	currentActivity: string;
-	phase?: "planning" | "execution" | "review" | "complete";
+	phase?: SessionPhase;
 	quitState?: "normal" | "confirm";
 }
 

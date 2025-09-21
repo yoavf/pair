@@ -29,13 +29,15 @@ class ClaudeCodeSession implements AgentSession {
 	constructor(options: SessionOptions) {
 		this.inputStream = new AsyncUserMessageStream();
 
-		// Configure MCP servers for communication
-		const mcpServers = {
-			[options.mcpServerUrl.includes("/navigator") ? "navigator" : "driver"]: {
-				type: "sse",
-				url: options.mcpServerUrl,
-			} as any,
-		};
+		// Configure MCP servers for communication (only for Navigator/Driver)
+		const mcpServers = options.role
+			? {
+					[options.role]: {
+						type: "sse",
+						url: options.mcpServerUrl,
+					} as any,
+				}
+			: {};
 
 		// Convert options to Claude Code SDK format
 		const queryOptions = {

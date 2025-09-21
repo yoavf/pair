@@ -127,6 +127,7 @@ export interface SessionOptions {
 	maxTurns: number;
 	projectPath: string;
 	mcpServerUrl: string;
+	role?: "navigator" | "driver"; // Explicit role instead of URL parsing (optional for Architect)
 	canUseTool?: (
 		toolName: string,
 		input: Record<string, unknown>,

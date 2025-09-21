@@ -1,10 +1,11 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { hasAbsolutelyRightPhrase, useAbsRight } from "../hooks/useAbsRight.js";
+import type { SessionPhase } from "../types.js";
 
 interface Props {
 	onExit: () => void;
-	phase?: "planning" | "execution" | "review" | "complete";
+	phase?: SessionPhase;
 	activity?: string;
 	quitState?: "normal" | "confirm";
 	onCtrlC?: () => void;

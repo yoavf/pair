@@ -1,6 +1,6 @@
 import { Box, Text } from "ink";
 import React, { useCallback, useMemo } from "react";
-import type { Message } from "../types.js";
+import type { Message, SessionPhase } from "../types.js";
 import DriverMessage from "./DriverMessage.js";
 import GenericMessage from "./GenericMessage.js";
 import NavigatorMessage from "./NavigatorMessage.js";
@@ -8,7 +8,7 @@ import SystemMessage from "./SystemMessage.js";
 
 interface Props {
 	messages: Message[];
-	phase?: "planning" | "execution" | "review" | "complete";
+	phase?: SessionPhase;
 }
 
 const ConversationView: React.FC<Props> = React.memo(({ messages, phase }) => {

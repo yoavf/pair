@@ -1,9 +1,10 @@
 import { Box, Text } from "ink";
 import type React from "react";
+import type { SessionPhase } from "../types.js";
 
 interface Props {
 	currentActivity: string;
-	phase?: "planning" | "execution" | "review" | "complete";
+	phase?: SessionPhase;
 }
 
 const PhasePill: React.FC<{ label: string; active?: boolean }> = ({

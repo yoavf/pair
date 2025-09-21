@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import ErrorBoundary from "./components/ErrorBoundary.js";
 import PairProgrammingApp from "./components/PairProgrammingApp.js";
 import { useMessages } from "./hooks/useMessages.js";
-import type { Message, Role } from "./types.js";
+import type { Message, Role, SessionPhase } from "./types.js";
 import type { AppConfig } from "./utils/config.js";
 import { formatSystemLine } from "./utils/systemLine.js";
 
@@ -27,10 +27,9 @@ export class InkDisplayManager {
 	private addMessage?: (message: Message) => void;
 	private updateActivity?: (activity: string) => void;
 	// Removed role switching/time remaining helpers
-	private setPhaseFn?: (
-		phase: "planning" | "execution" | "review" | "complete",
-	) => void;
+	private setPhaseFn?: (phase: SessionPhase) => void;
 	private setQuitStateFn?: (quitState: "normal" | "confirm") => void;
+	private currentPhase?: SessionPhase;
 	private firstCtrlCPressed = false;
 	private confirmExitTimer?: NodeJS.Timeout;
 	private syncTicker?: NodeJS.Timeout;
@@ -343,7 +342,7 @@ export class InkDisplayManager {
 		if (this.confirmExitTimer) clearTimeout(this.confirmExitTimer);
 	}
 
-	public setPhase(phase: "planning" | "execution" | "review" | "complete") {
+	public setPhase(phase: SessionPhase) {
 		if (this.setPhaseFn) {
 			this.setPhaseFn(phase);
 		}
