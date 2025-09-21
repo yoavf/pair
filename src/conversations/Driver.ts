@@ -4,6 +4,7 @@ import type {
 	EmbeddedAgentProvider,
 	StreamingAgentSession,
 } from "../providers/types.js";
+import { isAllToolsEnabled } from "../types/core.js";
 import type { DriverCommand, Role } from "../types.js";
 import type { Logger } from "../utils/logger.js";
 import { DRIVER_TOOL_NAMES, driverMcpServer } from "../utils/mcpServers.js";
@@ -196,8 +197,9 @@ export class Driver extends EventEmitter {
 		// Log session creation
 		try {
 			this.logger.logEvent("DRIVER_QUERY_INIT", {
-				allowedTools:
-					this.allowedTools[0] === "all" ? "all" : this.allowedTools,
+				allowedTools: isAllToolsEnabled(this.allowedTools)
+					? "all"
+					: this.allowedTools,
 				mcpServerUrl: this.mcpServerUrl || "embedded",
 				maxTurns: this.maxTurns,
 				hasSystemPrompt: !!this.systemPrompt,

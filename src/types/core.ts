@@ -6,6 +6,18 @@ export type Role = "navigator" | "driver" | "architect";
 
 export type SessionPhase = "planning" | "execution" | "review" | "complete";
 
+/**
+ * Constant representing "allow all tools" in allowedTools arrays
+ */
+export const ALL_TOOLS_MARKER = "all" as const;
+
+/**
+ * Helper function to check if allowedTools array represents "all tools"
+ */
+export function isAllToolsEnabled(allowedTools: string[]): boolean {
+	return allowedTools.length > 0 && allowedTools[0] === ALL_TOOLS_MARKER;
+}
+
 export interface Message {
 	role: "user" | "assistant" | "system";
 	content: string;

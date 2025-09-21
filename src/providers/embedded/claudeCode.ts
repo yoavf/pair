@@ -6,6 +6,7 @@
  */
 
 import { query } from "@anthropic-ai/claude-code";
+import { isAllToolsEnabled } from "../../types/core.js";
 import { AsyncUserMessageStream } from "../../utils/streamInput.js";
 import type {
 	AgentInputStream,
@@ -116,8 +117,9 @@ class ClaudeCodeStreamingSession implements StreamingAgentSession {
 		this.inputStream = new AsyncUserMessageStream();
 
 		// Combine standard tools with MCP tools (extracted from Driver/Navigator logic)
-		const baseTools =
-			options.allowedTools[0] === "all" ? undefined : options.allowedTools;
+		const baseTools = isAllToolsEnabled(options.allowedTools)
+			? undefined
+			: options.allowedTools;
 		const toolsToPass: string[] | undefined = baseTools
 			? [...baseTools, ...options.additionalMcpTools]
 			: undefined;

@@ -3,6 +3,7 @@ import type {
 	AgentSession,
 	EmbeddedAgentProvider,
 } from "../providers/types.js";
+import { isAllToolsEnabled } from "../types/core.js";
 import type { Role } from "../types.js";
 import type { Logger } from "../utils/logger.js";
 
@@ -39,8 +40,9 @@ export class Architect extends EventEmitter {
 		let turnCount = 0;
 
 		try {
-			const toolsToPass =
-				this.allowedTools[0] === "all" ? undefined : this.allowedTools;
+			const toolsToPass = isAllToolsEnabled(this.allowedTools)
+				? undefined
+				: this.allowedTools;
 
 			// Create session with provider
 			// Note: Architect doesn't use MCP server, but we keep the parameter for consistency
