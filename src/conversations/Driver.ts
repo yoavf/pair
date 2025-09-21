@@ -276,7 +276,12 @@ export class Driver extends EventEmitter {
 									});
 
 									// Store MCP tool results for driver communication
-									if (item.name?.startsWith("mcp__driver__")) {
+									if (!item.name) {
+										this.logger.logEvent("DRIVER_TOOL_MISSING_NAME", {
+											item: JSON.stringify(item),
+										});
+										console.warn("Driver: tool_use item missing name:", item);
+									} else if (item.name.startsWith("mcp__driver__")) {
 										this.toolResults.set(toolUseId, {
 											toolName: item.name,
 											input: item.input,

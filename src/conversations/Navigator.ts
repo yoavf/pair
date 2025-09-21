@@ -385,7 +385,14 @@ export class Navigator extends EventEmitter {
 								// Do not emit free-form navigator text; tools only
 								_fullText += `${item.text}\n`;
 							} else if (item.type === "tool_use") {
-								const tname = item.name || "";
+								if (!item.name) {
+									this.logger.logEvent("NAVIGATOR_TOOL_MISSING_NAME", {
+										item: JSON.stringify(item),
+									});
+									console.warn("Navigator: tool_use item missing name:", item);
+									continue;
+								}
+								const tname = item.name;
 								const isDecision = Navigator.isDecisionTool(tname);
 								let allowEmit = true;
 								if (this.inPermissionApproval) {
