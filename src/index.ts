@@ -15,6 +15,7 @@ import { InkDisplayManager } from "./display.js";
 import { type PairMcpServer, startPairMcpServer } from "./mcp/httpServer.js";
 import { agentProviderFactory } from "./providers/factory.js";
 import type { EmbeddedAgentProvider } from "./providers/types.js";
+import { isEmbeddedProvider } from "./providers/types.js";
 import {
 	NavigatorSessionError,
 	PermissionDeniedError,
@@ -139,7 +140,7 @@ class ClaudePairApp {
 		private task: string,
 	) {
 		const appConfig = loadConfig();
-		validateConfig(appConfig);
+		validateConfig(appConfig, agentProviderFactory.getAvailableProviders());
 		this.appConfig = appConfig;
 
 		this.config.projectPath = projectPath;
@@ -760,7 +761,7 @@ function showHelp(): void {
 async function main(): Promise<void> {
 	try {
 		const config = loadConfig();
-		validateConfig(config);
+		validateConfig(config, agentProviderFactory.getAvailableProviders());
 
 		const args = process.argv.slice(2);
 

@@ -214,6 +214,15 @@ export interface ExternalAgentProvider extends AgentProvider {
 }
 
 /**
+ * Type guard to check if a provider is embedded
+ */
+export function isEmbeddedProvider(
+	provider: AgentProvider,
+): provider is EmbeddedAgentProvider {
+	return provider.type === "embedded";
+}
+
+/**
  * Factory for creating agent providers
  */
 export interface AgentProviderFactory {

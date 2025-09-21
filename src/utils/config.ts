@@ -87,7 +87,10 @@ export function loadConfig(): AppConfig {
 /**
  * Validate configuration values
  */
-export function validateConfig(config: AppConfig): void {
+export function validateConfig(
+	config: AppConfig,
+	availableProviders?: string[],
+): void {
 	if (config.navigatorMaxTurns < 10 || config.navigatorMaxTurns > 100) {
 		throw new Error("Navigator max turns must be between 10 and 100");
 	}
@@ -114,5 +117,22 @@ export function validateConfig(config: AppConfig): void {
 		config.sessionHardLimitMs > 8 * 60 * 60 * 1000
 	) {
 		throw new Error("Session hard limit must be between 1 minute and 8 hours");
+	}
+
+	// Validate provider types if available providers list is provided
+	if (availableProviders) {
+		const providers = [
+			{ name: "architect", type: config.architectProvider },
+			{ name: "navigator", type: config.navigatorProvider },
+			{ name: "driver", type: config.driverProvider },
+		];
+
+		for (const provider of providers) {
+			if (!availableProviders.includes(provider.type)) {
+				throw new Error(
+					`Unknown ${provider.name} provider type: "${provider.type}". Available providers: ${availableProviders.join(", ")}`,
+				);
+			}
+		}
 	}
 }

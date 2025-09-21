@@ -63,7 +63,9 @@ export async function startPairMcpServer(
 				"mcp__driver__driverRequestGuidance",
 			],
 		});
-	} catch {}
+	} catch (error) {
+		console.warn("Failed to log MCP server initialization:", error);
+	}
 
 	const navTransports: TransportMap = new Map();
 	const drvTransports: TransportMap = new Map();
@@ -151,7 +153,9 @@ export async function startPairMcpServer(
 							role: "navigator",
 							sessionId: sid,
 						});
-					} catch {}
+					} catch (logError) {
+						console.warn("Failed to log navigator SSE post:", logError);
+					}
 					await t.handlePostMessage(req, res);
 					return;
 				}
@@ -225,7 +229,9 @@ export async function startPairMcpServer(
 							role: "driver",
 							sessionId: sid,
 						});
-					} catch {}
+					} catch (logError) {
+						console.warn("Failed to log driver SSE post:", logError);
+					}
 					await t.handlePostMessage(req, res);
 					return;
 				}
@@ -234,12 +240,16 @@ export async function startPairMcpServer(
 			} catch (err) {
 				try {
 					res.writeHead(500).end("error");
-				} catch {}
+				} catch (responseError) {
+					console.warn("Failed to send error response:", responseError);
+				}
 				try {
 					logger?.logEvent("MCP_HTTP_SERVER_ERROR", {
 						error: err instanceof Error ? err.message : String(err),
 					});
-				} catch {}
+				} catch (logError) {
+					console.warn("Failed to log MCP server error:", logError);
+				}
 			}
 		},
 	);

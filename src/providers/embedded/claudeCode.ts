@@ -74,15 +74,26 @@ class ClaudeCodeSession implements AgentSession {
 	 * AsyncIterable implementation
 	 */
 	async *[Symbol.asyncIterator](): AsyncIterator<AgentMessage> {
-		for await (const message of this.iterator) {
-			// Capture session ID
-			if (message.session_id && !this.sessionId) {
-				this.sessionId = message.session_id;
-			}
+		try {
+			for await (const message of this.iterator) {
+				// Capture session ID
+				if (message.session_id && !this.sessionId) {
+					this.sessionId = message.session_id;
+				}
 
-			// Pass through messages with minimal transformation
-			// The agent classes expect Claude Code message format
-			yield message as AgentMessage;
+				// Pass through messages with minimal transformation
+				// The agent classes expect Claude Code message format
+				yield message as AgentMessage;
+			}
+		} catch (error) {
+			// Add context to session errors
+			const contextualError = new Error(
+				`Claude Code session failed (session_id: ${this.sessionId || "none"}): ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+			contextualError.cause = error;
+			throw contextualError;
 		}
 	}
 
@@ -150,14 +161,25 @@ class ClaudeCodeStreamingSession implements StreamingAgentSession {
 	 * AsyncIterable implementation
 	 */
 	async *[Symbol.asyncIterator](): AsyncIterator<AgentMessage> {
-		for await (const message of this.iterator) {
-			// Capture session ID
-			if (message.session_id && !this.sessionId) {
-				this.sessionId = message.session_id;
-			}
+		try {
+			for await (const message of this.iterator) {
+				// Capture session ID
+				if (message.session_id && !this.sessionId) {
+					this.sessionId = message.session_id;
+				}
 
-			// Pass through messages with minimal transformation
-			yield message as AgentMessage;
+				// Pass through messages with minimal transformation
+				yield message as AgentMessage;
+			}
+		} catch (error) {
+			// Add context to streaming session errors
+			const contextualError = new Error(
+				`Claude Code streaming session failed (session_id: ${this.sessionId || "none"}): ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+			contextualError.cause = error;
+			throw contextualError;
 		}
 	}
 
