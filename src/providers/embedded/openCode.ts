@@ -304,8 +304,7 @@ class AsyncMessageQueue<T> implements AsyncIterable<T> {
 			const resolve = this.resolvers.shift();
 			if (resolve) {
 				resolve({
-					// biome-ignore lint/suspicious/noExplicitAny: Async iterator error propagation
-					value: undefined as any,
+					value: undefined,
 					done: true,
 				});
 			}
