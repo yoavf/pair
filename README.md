@@ -1,6 +1,6 @@
 # Pair
 
-Pair is a CLI utility that orchestrates coding agents (default: Claude Code) working together in a pair programming session. The driver and navigator roles can now be backed by different providers, including the OpenCode SDK.
+Pair is a CLI utility that orchestrates coding agents working together in a pair programming session. The architect, navigator, and driver roles can each run on different providers, including Claude Code and the OpenCode SDK.
 
 ## Overview
 

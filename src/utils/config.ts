@@ -42,8 +42,8 @@ export const DEFAULT_CONFIG: AppConfig = {
 	model: undefined, // Use CLI default
 	sessionHardLimitMs: 30 * 60 * 1000, // 30 minutes
 	enableSyncStatus: true, // Enable by default
-	architectProvider: "claude-code",
-	navigatorProvider: "claude-code",
+	architectProvider: "opencode",
+	navigatorProvider: "opencode",
 	driverProvider: "claude-code",
 };
 
