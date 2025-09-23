@@ -431,6 +431,26 @@ class OpenCodeSessionBase implements AsyncIterable<AgentMessage> {
 		}
 	}
 
+	/**
+	 * Extracts array from tool.ids result with proper type checking
+	 */
+	private extractIdsArray(idsResult: unknown): unknown[] | null {
+		// Direct array
+		if (Array.isArray(idsResult)) {
+			return idsResult;
+		}
+
+		// Wrapped in data property
+		if (idsResult && typeof idsResult === "object" && "data" in idsResult) {
+			const data = (idsResult as { data: unknown }).data;
+			if (Array.isArray(data)) {
+				return data;
+			}
+		}
+
+		return null;
+	}
+
 	private async logAvailableTools(): Promise<void> {
 		if (this.toolIdsLogged) return;
 		if (!this.client || typeof this.client.tool?.ids !== "function") {
@@ -439,12 +459,8 @@ class OpenCodeSessionBase implements AsyncIterable<AgentMessage> {
 		}
 		try {
 			const idsResult = await this.client.tool.ids({});
-			const ids = Array.isArray(idsResult)
-				? idsResult
-				: Array.isArray((idsResult as any)?.data)
-					? ((idsResult as any).data as unknown[])
-					: undefined;
-			if (Array.isArray(ids)) {
+			const ids = this.extractIdsArray(idsResult);
+			if (ids) {
 				this.logDiagnostic("OPENCODE_TOOL_IDS", {
 					ids,
 				});
