@@ -21,7 +21,6 @@ import type {
 	EmbeddedAgentProvider,
 	ProviderConfig,
 } from "./providers/types.js";
-import { isEmbeddedProvider } from "./providers/types.js";
 import { isFileModificationTool } from "./types/core.js";
 import {
 	NavigatorSessionError,

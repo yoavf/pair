@@ -12,11 +12,8 @@ import type {
 	AgentInputStream,
 	AgentMessage,
 	AgentSession,
-	CanUseToolFunction,
-	McpServerConfig,
 	SessionOptions,
 	StreamingAgentSession,
-	StreamingCanUseToolFunction,
 	StreamingSessionOptions,
 } from "../types.js";
 import { BaseEmbeddedProvider } from "./base.js";

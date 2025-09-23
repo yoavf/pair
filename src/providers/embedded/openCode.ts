@@ -337,17 +337,6 @@ class AsyncMessageQueue<T> implements AsyncIterable<T> {
 	}
 }
 
-function hasCompletedTimestamp(info: unknown): boolean {
-	if (!info || typeof info !== "object") return false;
-	const time = (info as { time?: unknown }).time;
-	if (!time || typeof time !== "object") return false;
-	if ("completed" in time) {
-		const value = (time as Record<string, unknown>).completed;
-		return value !== undefined && value !== null;
-	}
-	return false;
-}
-
 function unwrapData<T>(
 	result: T | { data: T | undefined; error?: unknown },
 ): T {
@@ -602,7 +591,7 @@ class OpenCodeSessionBase implements AsyncIterable<AgentMessage> {
 			!this.emittedMessages.has(info.id)
 		) {
 			const buffer = this.messageBuffers.get(info.id);
-			if (buffer && buffer.trim()) {
+			if (buffer?.trim()) {
 				this.queue.push({
 					type: "assistant",
 					session_id: this.sessionId ?? undefined,
@@ -660,12 +649,6 @@ class OpenCodeSessionBase implements AsyncIterable<AgentMessage> {
 				});
 				this.handleToolPart(part);
 				break;
-			case "file":
-			case "snapshot":
-			case "patch":
-			case "agent":
-			case "step-start":
-			case "step-finish":
 			default:
 				break;
 		}
@@ -974,13 +957,6 @@ class OpenCodeArchitectSession
 	extends OpenCodeSessionBase
 	implements AgentSession
 {
-	constructor(
-		clientFactory: () => Promise<OpenCodeClient>,
-		config: ArchitectSessionConfig,
-	) {
-		super(clientFactory, config);
-	}
-
 	sendMessage(message: string): void {
 		void this.enqueuePrompt(message);
 	}
