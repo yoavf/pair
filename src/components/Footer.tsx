@@ -45,9 +45,13 @@ const Footer: React.FC<Props> = ({
 		segments.push(activity);
 	}
 	if (providers) {
-		segments.push(
-			`A:${providers.architect} | N:${providers.navigator} | D:${providers.driver}`,
-		);
+		if (phase === "planning") {
+			segments.push(`Architect: ${providers.architect}`);
+		} else if (phase === "execution" || phase === "review") {
+			segments.push(
+				`Navigator: ${providers.navigator} | Driver: ${providers.driver}`,
+			);
+		}
 	}
 
 	const leftText = segments.join("  •  ") || " ";
