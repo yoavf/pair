@@ -39,7 +39,7 @@ const Footer: React.FC<Props> = ({
 
 	const segments: string[] = [];
 	if (phase) {
-		segments.push(`Phase: ${phase[0].toUpperCase()}${phase.slice(1)}`);
+		segments.push(`${phase[0].toUpperCase()}${phase.slice(1)}`);
 	}
 	if (activity) {
 		segments.push(activity);

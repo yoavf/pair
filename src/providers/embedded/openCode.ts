@@ -1222,6 +1222,33 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 		return this.clientPromise;
 	}
 
+	getPlanningConfig(task: string): {
+		prompt: string;
+		detectPlanCompletion: (message: any) => string | null;
+	} {
+		return {
+			prompt: `Our task is to: ${task}\n\nPlease create a clear, step-by-step implementation plan tailored to this repository.\n- Focus on concrete steps, specific files, and commands.\n- Keep it concise and actionable.\n- Do not implement changes now.\n\nEnd your response with "PLAN COMPLETE" when you finish the plan.`,
+			detectPlanCompletion: (message) => {
+				// Detect text-based completion
+				if (
+					message.message?.content &&
+					Array.isArray(message.message.content)
+				) {
+					let fullText = "";
+					for (const item of message.message.content) {
+						if (item.type === "text") {
+							fullText += item.text ?? "";
+						}
+					}
+					if (fullText.includes("PLAN COMPLETE")) {
+						return fullText.replace("PLAN COMPLETE", "").trim();
+					}
+				}
+				return null;
+			},
+		};
+	}
+
 	async cleanup(): Promise<void> {
 		await super.cleanup();
 		if (this.serverLease) {

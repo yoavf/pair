@@ -13,6 +13,7 @@ import type { Logger } from "../utils/logger.js";
 export class Architect extends EventEmitter {
 	private sessionId: string | null = null;
 	private session: AgentSession | null = null;
+	private detectPlanCompletion?: (message: any) => string | null;
 
 	constructor(
 		private systemPrompt: string,
@@ -43,16 +44,14 @@ export class Architect extends EventEmitter {
 			const toolsToPass = isAllToolsEnabled(this.allowedTools)
 				? undefined
 				: this.allowedTools;
-			const isOpenCodeProvider = this.provider.name === "opencode";
 
-			// Create session with provider
-			// Note: Architect doesn't use MCP server, but we keep the parameter for consistency
+			// Create session with provider and MCP server for completePlan tool
 			this.session = this.provider.createSession({
 				systemPrompt: this.systemPrompt,
 				allowedTools: toolsToPass,
 				maxTurns: this.maxTurns,
 				projectPath: this.projectPath,
-				mcpServerUrl: this.mcpServerUrl || "", // Empty for Architect since it doesn't use MCP
+				mcpServerUrl: this.mcpServerUrl || "",
 				permissionMode: "plan",
 				diagnosticLogger: (event, data) => {
 					this.logger.logEvent(event, {
@@ -63,10 +62,10 @@ export class Architect extends EventEmitter {
 				},
 			});
 
-			// Send the initial prompt - adjust based on provider
-			const prompt = isOpenCodeProvider
-				? `Our task is to: ${task}\n\nPlease create a clear, step-by-step implementation plan tailored to this repository.\n- Focus on concrete steps, specific files, and commands.\n- Keep it concise and actionable.\n- Do not implement changes now.\n\nEnd your response with "PLAN COMPLETE" when you finish the plan.`
-				: `Our task is to: ${task}\n\nPlease create a clear, step-by-step implementation plan tailored to this repository.\n- Focus on concrete steps, specific files, and commands.\n- Keep it concise and actionable.\n- Do not implement changes now.\n\nWhen your plan is ready, call the ExitPlanMode tool with { plan: <your full plan> } to finish planning.`;
+			// Get provider-specific prompt and completion logic
+			const { prompt, detectPlanCompletion } =
+				this.provider.getPlanningConfig(task);
+			this.detectPlanCompletion = detectPlanCompletion;
 			this.session.sendMessage(prompt);
 
 			for await (const message of this.session) {
@@ -112,16 +111,6 @@ export class Architect extends EventEmitter {
 									sessionRole: "architect" as Role,
 									timestamp: new Date(),
 								});
-
-								// For OpenCode, check if plan is complete based on text content
-								if (isOpenCodeProvider && text.includes("PLAN COMPLETE")) {
-									plan = _fullText.replace("PLAN COMPLETE", "").trim();
-									this.logger.logEvent("ARCHITECT_PLAN_CREATED_FROM_TEXT", {
-										planLength: (plan ?? "").length,
-										turnCount,
-									});
-									return plan;
-								}
 							} else if (item.type === "tool_use") {
 								// Emit tool usage
 								this.emit("tool_use", {
@@ -129,43 +118,21 @@ export class Architect extends EventEmitter {
 									tool: item.name,
 									input: item.input,
 								});
-
-								// Detect plan completion via ExitPlanMode tool (Claude Code)
-								// biome-ignore lint/suspicious/noExplicitAny: Provider tool item structure
-								const it: any = item as any;
-								if (it.name === "ExitPlanMode" && it.input?.plan) {
-									plan = it.input.plan as string;
-									this.logger.logEvent("ARCHITECT_PLAN_CREATED", {
-										planLength: (plan ?? "").length,
-										turnCount,
-									});
-									// Robust early-exit: as soon as ExitPlanMode is called with a plan,
-									// return the plan without waiting for a tool_result from the host.
-									// This avoids environments that don't implement the ExitPlanMode tool_result handshake.
-									this.logger.logEvent("ARCHITECT_EARLY_RETURN_AFTER_PLAN", {
-										reason: "exit_plan_mode_called",
-										turnCount,
-									});
-									return plan;
-								}
 							}
 						}
 
-						// For OpenCode, also check if we have accumulated a complete plan
-						if (
-							isOpenCodeProvider &&
-							_fullText.includes("PLAN COMPLETE") &&
-							!plan
-						) {
-							plan = _fullText.replace("PLAN COMPLETE", "").trim();
-							this.logger.logEvent("ARCHITECT_PLAN_CREATED_FROM_FULLTEXT", {
-								planLength: (plan ?? "").length,
-								turnCount,
-							});
-							return plan;
+						// Use provider-specific completion detection
+						if (this.detectPlanCompletion) {
+							const detectedPlan = this.detectPlanCompletion(message);
+							if (detectedPlan) {
+								plan = detectedPlan;
+								this.logger.logEvent("ARCHITECT_PLAN_CREATED", {
+									planLength: (plan ?? "").length,
+									turnCount,
+								});
+								return plan;
+							}
 						}
-
-						// No fallback text capture for Claude Code — plan must be returned via ExitPlanMode tool
 					}
 				}
 			}

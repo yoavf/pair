@@ -196,6 +196,14 @@ export interface EmbeddedAgentProvider extends AgentProvider {
 	createStreamingSession(
 		options: StreamingSessionOptions,
 	): StreamingAgentSession;
+
+	/**
+	 * Get provider-specific planning configuration
+	 */
+	getPlanningConfig(task: string): {
+		prompt: string;
+		detectPlanCompletion: (message: AgentMessage) => string | null;
+	};
 }
 
 /**

@@ -235,8 +235,7 @@ class ClaudePairApp {
 			this.projectPath,
 			this.logger,
 			architectProvider,
-			// Architect doesn't use MCP server, but we can pass empty string
-			"",
+			"", // Architect doesn't use MCP server for this approach
 		);
 
 		this.navigator = new Navigator(

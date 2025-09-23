@@ -233,4 +233,31 @@ export class ClaudeCodeProvider extends BaseEmbeddedProvider {
 	): StreamingAgentSession {
 		return new ClaudeCodeStreamingSession(options);
 	}
+
+	getPlanningConfig(task: string): {
+		prompt: string;
+		detectPlanCompletion: (message: any) => string | null;
+	} {
+		return {
+			prompt: `Our task is to: ${task}\n\nPlease create a clear, step-by-step implementation plan tailored to this repository.\n- Focus on concrete steps, specific files, and commands.\n- Keep it concise and actionable.\n- Do not implement changes now.\n\nWhen your plan is ready, call the ExitPlanMode tool with { plan: <your full plan> } to finish planning.`,
+			detectPlanCompletion: (message) => {
+				// Detect ExitPlanMode tool usage
+				if (
+					message.message?.content &&
+					Array.isArray(message.message.content)
+				) {
+					for (const item of message.message.content) {
+						if (
+							item.type === "tool_use" &&
+							item.name === "ExitPlanMode" &&
+							item.input?.plan
+						) {
+							return item.input.plan as string;
+						}
+					}
+				}
+				return null;
+			},
+		};
+	}
 }

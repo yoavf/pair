@@ -22,6 +22,8 @@ const PERMISSION_TOOL_NAME_MAP: Record<string, string> = {
 	"pair-navigator_navigatorDeny": "mcp__navigator__navigatorDeny",
 	// Special planning tool for architect
 	exitplanmode: "ExitPlanMode",
+	"pair-architect_completePlan": "mcp__architect__completePlan",
+	completeplan: "completePlan",
 };
 
 export function mapPermissionType(type: string): string | null {
