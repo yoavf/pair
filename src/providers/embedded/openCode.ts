@@ -313,7 +313,6 @@ class AsyncMessageQueue<T> implements AsyncIterable<T> {
 
 	private async next(): Promise<IteratorResult<T, void>> {
 		if (this.error) {
-			// biome-ignore lint/suspicious/noExplicitAny: Async iterator error propagation
 			throw this.error;
 		}
 
