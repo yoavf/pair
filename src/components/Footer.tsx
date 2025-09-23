@@ -1,7 +1,7 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { hasAbsolutelyRightPhrase, useAbsRight } from "../hooks/useAbsRight.js";
-import type { SessionPhase } from "../types.js";
+import type { AgentProviders, SessionPhase } from "../types.js";
 
 interface Props {
 	onExit: () => void;
@@ -10,6 +10,7 @@ interface Props {
 	quitState?: "normal" | "confirm";
 	onCtrlC?: () => void;
 	allMessages?: string; // Combined content of recent messages for detection
+	providers?: AgentProviders;
 }
 
 const Footer: React.FC<Props> = ({
@@ -19,6 +20,7 @@ const Footer: React.FC<Props> = ({
 	quitState = "normal",
 	onCtrlC,
 	allMessages = "",
+	providers,
 }) => {
 	const hasPhrase = hasAbsolutelyRightPhrase(allMessages);
 	const absRightColor = useAbsRight(hasPhrase);
@@ -35,6 +37,21 @@ const Footer: React.FC<Props> = ({
 	const terminalWidth = process.stdout.columns || 80;
 	const horizontalLine = "─".repeat(terminalWidth);
 
+	const segments: string[] = [];
+	if (phase) {
+		segments.push(`Phase: ${phase[0].toUpperCase()}${phase.slice(1)}`);
+	}
+	if (activity) {
+		segments.push(activity);
+	}
+	if (providers) {
+		segments.push(
+			`A:${providers.architect} | N:${providers.navigator} | D:${providers.driver}`,
+		);
+	}
+
+	const leftText = segments.join("  •  ") || " ";
+
 	return (
 		<Box flexDirection="column">
 			<Text color="gray">{horizontalLine}</Text>
@@ -46,8 +63,7 @@ const Footer: React.FC<Props> = ({
 					backgroundColor={absRightColor || undefined}
 					color={absRightColor ? "black" : "gray"}
 				>
-					{phase ? `Phase: ${phase[0].toUpperCase()}${phase.slice(1)}` : ""}
-					{activity ? `  •  ${activity}` : ""}
+					{leftText}
 				</Text>
 				<Text
 					backgroundColor={absRightColor || undefined}

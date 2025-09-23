@@ -189,6 +189,13 @@ export class Driver extends EventEmitter {
 			canUseTool: this.canUseTool,
 			disallowedTools: [],
 			includePartialMessages: true,
+			diagnosticLogger: (event, data) => {
+				this.logger.logEvent(event, {
+					agent: "driver",
+					provider: this.provider.name,
+					...data,
+				});
+			},
 		});
 
 		// Use the session's input stream
@@ -526,7 +533,8 @@ export class Driver extends EventEmitter {
 		toolName: string,
 		input: any,
 	): DriverCommand | null {
-		switch (toolName) {
+		const normalized = Driver.normalizeDriverTool(toolName);
+		switch (normalized) {
 			case "mcp__driver__driverRequestReview":
 				return {
 					type: "request_review",
@@ -540,6 +548,16 @@ export class Driver extends EventEmitter {
 			default:
 				return null;
 		}
+	}
+
+	private static normalizeDriverTool(toolName: string): string {
+		if (toolName.startsWith("mcp__driver__")) {
+			return toolName;
+		}
+		if (toolName.startsWith("pair-driver_")) {
+			return `mcp__driver__${toolName.slice("pair-driver_".length)}`;
+		}
+		return toolName;
 	}
 
 	/**

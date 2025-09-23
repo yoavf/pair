@@ -47,8 +47,13 @@ export class InkDisplayManager {
 
 		// Create a wrapper component that exposes the hooks
 		const AppWrapper: React.FC = () => {
+			const providers = {
+				architect: config.architectProvider,
+				navigator: config.navigatorProvider,
+				driver: config.driverProvider,
+			};
 			const { state, addMessage, updateActivity, setPhase, setQuitState } =
-				useMessages(projectPath, initialTask);
+				useMessages(projectPath, initialTask, providers);
 
 			// Expose methods to the class instance
 			useEffect(() => {
@@ -157,7 +162,7 @@ export class InkDisplayManager {
 	showTransitionMessage() {
 		const message: Message = {
 			role: "system",
-			content: "🚀 Starting pair coding session to implement the plan...",
+			content: "🚀 Starting pair coding session to implement the plan...\n",
 			timestamp: new Date(),
 			sessionRole: "driver",
 			symbol: "",
@@ -170,6 +175,7 @@ export class InkDisplayManager {
 		let content = tool;
 		let symbol: string | undefined;
 		let symbolColor: string | undefined;
+		const normalizedTool = tool.toLowerCase();
 
 		const formatted = formatSystemLine(role, tool, params);
 		const isHuman = !!formatted;
@@ -199,10 +205,10 @@ export class InkDisplayManager {
 
 			// Show detailed parameters (skip for specialized human-friendly MCP lines)
 			if (!isHuman) {
-				if (tool === "Read" && params.file_path) {
+				if (normalizedTool === "read" && params.file_path) {
 					content += ` - ${toRel(params.file_path)}`;
 					if (params.offset) content += ` (from line ${params.offset})`;
-				} else if (tool === "Edit" && params.file_path) {
+				} else if (normalizedTool === "edit" && params.file_path) {
 					content += ` - ${toRel(params.file_path)}`;
 					if (params.old_string) {
 						const preview = params.old_string
@@ -210,24 +216,24 @@ export class InkDisplayManager {
 							.replace(/\n/g, "\\n");
 						content += ` (replacing "${preview}...")`;
 					}
-				} else if (tool === "Write" && params.file_path) {
+				} else if (normalizedTool === "write" && params.file_path) {
 					content += ` - ${toRel(params.file_path)}`;
-				} else if (tool === "MultiEdit" && params.file_path) {
+				} else if (normalizedTool === "multiedit" && params.file_path) {
 					content += ` - ${toRel(params.file_path)} (${params.edits?.length || 0} edits)`;
-				} else if (tool === "Bash" && params.command) {
+				} else if (normalizedTool === "bash" && params.command) {
 					const cmdFull = String(params.command);
 					const cmd = cmdFull.slice(0, 60);
 					content += ` - ${cmd}${cmdFull.length > 60 ? "..." : ""}`;
-				} else if (tool === "BashOutput" && params.bash_id) {
+				} else if (normalizedTool === "bashoutput" && params.bash_id) {
 					content += ` - shell ${params.bash_id}`;
 					if (params.filter) content += ` (filtered: "${params.filter}")`;
-				} else if (tool === "Grep" && params.pattern) {
+				} else if (normalizedTool === "grep" && params.pattern) {
 					content += ` - pattern: "${params.pattern}"`;
 					if (params.path) content += ` in ${toRel(params.path)}`;
-				} else if (tool === "Glob" && params.pattern) {
+				} else if (normalizedTool === "glob" && params.pattern) {
 					content += ` - pattern: "${params.pattern}"`;
 					if (params.path) content += ` in ${toRel(params.path)}`;
-				} else if (tool === "TodoWrite" && params.todos) {
+				} else if (normalizedTool === "todowrite" && params.todos) {
 					const count = params.todos?.length || 0;
 					const pending =
 						// biome-ignore lint/suspicious/noExplicitAny: TodoWrite tool parameter structure
@@ -302,36 +308,34 @@ export class InkDisplayManager {
 	}
 
 	showCompletionMessage(summary?: string) {
-		// Add horizontal separator
 		const separatorMessage: Message = {
 			role: "system",
 			content: "─".repeat(80),
 			timestamp: new Date(),
-			sessionRole: "navigator",
+			sessionRole: "driver",
 			symbol: "",
 		};
 		this.appendMessage(separatorMessage);
 
-		// Add title with green checkmark
 		const titleMessage: Message = {
 			role: "system",
-			content: "✅ Task completed:",
+			content: "✅ Task completed!",
 			timestamp: new Date(),
-			sessionRole: "navigator",
+			sessionRole: "driver",
 			symbol: "",
 		};
 		this.appendMessage(titleMessage);
 
-		// Add completion summary
-		const completionText =
-			summary || "Navigator has marked the implementation as finished.";
-		const summaryMessage: Message = {
-			role: "assistant",
-			content: completionText,
-			timestamp: new Date(),
-			sessionRole: "navigator",
-		};
-		this.appendMessage(summaryMessage);
+		if (summary && summary.trim().length > 0) {
+			const summaryMessage: Message = {
+				role: "system",
+				content: summary,
+				timestamp: new Date(),
+				sessionRole: "driver",
+				symbol: "",
+			};
+			this.appendMessage(summaryMessage);
+		}
 	}
 
 	cleanup() {
@@ -351,6 +355,10 @@ export class InkDisplayManager {
 		if (this.config.enableSyncStatus) {
 			this.refreshSyncStatus();
 		}
+	}
+
+	public getPhase(): SessionPhase | undefined {
+		return this.currentPhase;
 	}
 
 	public setQuitState(quitState: "normal" | "confirm") {

@@ -1,7 +1,22 @@
 import { useCallback, useState } from "react";
-import type { Message, PairProgrammingState, SessionPhase } from "../types.js";
+import type {
+	AgentProviders,
+	Message,
+	PairProgrammingState,
+	SessionPhase,
+} from "../types.js";
 
-export const useMessages = (projectPath: string, initialTask: string) => {
+const UNKNOWN_PROVIDERS: AgentProviders = {
+	architect: "unknown",
+	navigator: "unknown",
+	driver: "unknown",
+};
+
+export const useMessages = (
+	projectPath: string,
+	initialTask: string,
+	providers: AgentProviders = UNKNOWN_PROVIDERS,
+) => {
 	const [state, setState] = useState<PairProgrammingState>({
 		projectPath,
 		initialTask,
@@ -10,6 +25,7 @@ export const useMessages = (projectPath: string, initialTask: string) => {
 		currentActivity: "",
 		phase: "planning",
 		quitState: "normal",
+		providers,
 	});
 
 	const addMessage = useCallback((message: Message) => {

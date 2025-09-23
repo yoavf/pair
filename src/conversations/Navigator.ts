@@ -247,6 +247,13 @@ export class Navigator extends EventEmitter {
 			canUseTool: navCanUseTool,
 			disallowedTools: ["Write", "Edit", "MultiEdit"],
 			includePartialMessages: true,
+			diagnosticLogger: (event, data) => {
+				this.logger.logEvent(event, {
+					agent: "navigator",
+					provider: this.provider.name,
+					...data,
+				});
+			},
 		});
 
 		// Use the session's input stream
@@ -577,7 +584,8 @@ export class Navigator extends EventEmitter {
 		toolName: string,
 		input: any,
 	): NavigatorCommand | null {
-		switch (toolName) {
+		const normalized = Navigator.normalizeNavigatorTool(toolName);
+		switch (normalized) {
 			case "mcp__navigator__navigatorCodeReview":
 				return {
 					type: "code_review",
@@ -595,13 +603,24 @@ export class Navigator extends EventEmitter {
 		}
 	}
 
+	private static normalizeNavigatorTool(toolName: string): string {
+		if (toolName.startsWith("mcp__navigator__")) {
+			return toolName;
+		}
+		if (toolName.startsWith("pair-navigator_")) {
+			return `mcp__navigator__${toolName.slice("pair-navigator_".length)}`;
+		}
+		return toolName;
+	}
+
 	// No fallback text parsing — MCP tools only
 
 	private static isDecisionTool(name: string): boolean {
+		const normalized = Navigator.normalizeNavigatorTool(name);
 		return (
-			name === "mcp__navigator__navigatorApprove" ||
-			name === "mcp__navigator__navigatorDeny" ||
-			name === "mcp__navigator__navigatorCodeReview"
+			normalized === "mcp__navigator__navigatorApprove" ||
+			normalized === "mcp__navigator__navigatorDeny" ||
+			normalized === "mcp__navigator__navigatorCodeReview"
 		);
 	}
 

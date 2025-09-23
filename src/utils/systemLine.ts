@@ -12,13 +12,32 @@ export interface SystemLineFormat {
 // - navigatorCodeReview -> • (cyan)
 // - navigatorComplete -> ⏹ (greenBright)
 // - driverRequestReview -> text only (no symbol override)
+function toNavigatorToolId(tool: string): string | null {
+	if (tool.startsWith("mcp__navigator__")) return tool;
+	if (tool.startsWith("pair-navigator_")) {
+		const suffix = tool.slice("pair-navigator_".length);
+		return `mcp__navigator__${suffix}`;
+	}
+	return null;
+}
+
+function toDriverToolId(tool: string): string | null {
+	if (tool.startsWith("mcp__driver__")) return tool;
+	if (tool.startsWith("pair-driver_")) {
+		const suffix = tool.slice("pair-driver_".length);
+		return `mcp__driver__${suffix}`;
+	}
+	return null;
+}
+
 export function formatSystemLine(
 	role: Role,
 	tool: string,
 	// biome-ignore lint/suspicious/noExplicitAny: tool parameters are dynamic
 	params?: any,
 ): SystemLineFormat | null {
-	if (role === "navigator" && tool.startsWith("mcp__navigator__")) {
+	const navigatorTool = toNavigatorToolId(tool);
+	if (role === "navigator" && navigatorTool) {
 		const comment =
 			params && typeof params.comment === "string" ? params.comment : "";
 		const summary =
@@ -26,28 +45,28 @@ export function formatSystemLine(
 				? (params as any).summary
 				: "";
 
-		if (tool === "mcp__navigator__navigatorApprove") {
+		if (navigatorTool === "mcp__navigator__navigatorApprove") {
 			return {
 				content: `Approved${comment ? `: ${comment}` : ""}`,
 				symbol: "✓",
 				symbolColor: "#00ff00",
 			};
 		}
-		if (tool === "mcp__navigator__navigatorDeny") {
+		if (navigatorTool === "mcp__navigator__navigatorDeny") {
 			return {
 				content: `Denied${comment ? `: ${comment}` : ""}`,
 				symbol: "x",
 				symbolColor: "#ff0000",
 			};
 		}
-		if (tool === "mcp__navigator__navigatorCodeReview") {
+		if (navigatorTool === "mcp__navigator__navigatorCodeReview") {
 			return {
 				content: `Code Review${comment ? `: ${comment}` : ""}`,
 				symbol: "•",
 				symbolColor: "cyan",
 			};
 		}
-		if (tool === "mcp__navigator__navigatorComplete") {
+		if (navigatorTool === "mcp__navigator__navigatorComplete") {
 			return {
 				content: `Completed${summary ? `: ${summary}` : ""}`,
 				symbol: "⏹",
@@ -56,12 +75,19 @@ export function formatSystemLine(
 		}
 	}
 
-	if (role === "driver" && tool.startsWith("mcp__driver__")) {
+	const driverTool = toDriverToolId(tool);
+	if (role === "driver" && driverTool) {
 		const ctx =
 			params && typeof params.context === "string" ? params.context : "";
-		if (tool === "mcp__driver__driverRequestReview") {
+		if (driverTool === "mcp__driver__driverRequestReview") {
 			return {
 				content: `🔍 Review requested${ctx ? `: ${ctx}` : ""}`,
+				symbol: "",
+			};
+		}
+		if (driverTool === "mcp__driver__driverRequestGuidance") {
+			return {
+				content: `🧭 Guidance requested${ctx ? `: ${ctx}` : ""}`,
 				symbol: "",
 			};
 		}

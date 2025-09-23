@@ -3,6 +3,7 @@
  */
 
 import { ClaudeCodeProvider } from "./embedded/claudeCode.js";
+import { OpenCodeProvider } from "./embedded/openCode.js";
 import type {
 	AgentProvider,
 	AgentProviderFactory,
@@ -23,6 +24,7 @@ export class DefaultAgentProviderFactory implements AgentProviderFactory {
 	constructor() {
 		// Register default providers
 		this.registerProvider("claude-code", ClaudeCodeProvider);
+		this.registerProvider("opencode", OpenCodeProvider);
 	}
 
 	/**

@@ -67,6 +67,13 @@ export interface PairProgrammingState {
 	currentActivity: string;
 	phase?: SessionPhase;
 	quitState?: "normal" | "confirm";
+	providers: AgentProviders;
+}
+
+export interface AgentProviders {
+	architect: string;
+	navigator: string;
+	driver: string;
 }
 
 export interface MessageEntry {

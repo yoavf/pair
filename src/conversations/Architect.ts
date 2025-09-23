@@ -43,6 +43,7 @@ export class Architect extends EventEmitter {
 			const toolsToPass = isAllToolsEnabled(this.allowedTools)
 				? undefined
 				: this.allowedTools;
+			const isOpenCodeProvider = this.provider.name === "opencode";
 
 			// Create session with provider
 			// Note: Architect doesn't use MCP server, but we keep the parameter for consistency
@@ -53,12 +54,20 @@ export class Architect extends EventEmitter {
 				projectPath: this.projectPath,
 				mcpServerUrl: this.mcpServerUrl || "", // Empty for Architect since it doesn't use MCP
 				permissionMode: "plan",
+				diagnosticLogger: (event, data) => {
+					this.logger.logEvent(event, {
+						agent: "architect",
+						provider: this.provider.name,
+						...data,
+					});
+				},
 			});
 
-			// Send the initial prompt
-			this.session.sendMessage(
-				`Our task is to: ${task}\n\nPlease create a clear, step-by-step implementation plan tailored to this repository.\n- Focus on concrete steps, specific files, and commands.\n- Keep it concise and actionable.\n- Do not implement changes now.\n\nWhen your plan is ready, call the ExitPlanMode tool with { plan: <your full plan> } to finish planning.`,
-			);
+			// Send the initial prompt - adjust based on provider
+			const prompt = isOpenCodeProvider
+				? `Our task is to: ${task}\n\nPlease create a clear, step-by-step implementation plan tailored to this repository.\n- Focus on concrete steps, specific files, and commands.\n- Keep it concise and actionable.\n- Do not implement changes now.\n\nEnd your response with "PLAN COMPLETE" when you finish the plan.`
+				: `Our task is to: ${task}\n\nPlease create a clear, step-by-step implementation plan tailored to this repository.\n- Focus on concrete steps, specific files, and commands.\n- Keep it concise and actionable.\n- Do not implement changes now.\n\nWhen your plan is ready, call the ExitPlanMode tool with { plan: <your full plan> } to finish planning.`;
+			this.session.sendMessage(prompt);
 
 			for await (const message of this.session) {
 				// Capture session ID
@@ -93,15 +102,26 @@ export class Architect extends EventEmitter {
 
 						for (const item of content) {
 							if (item.type === "text") {
-								_fullText += `${item.text}\n`;
+								const text = item.text ?? "";
+								_fullText += `${text}\n`;
 
 								// Emit for display
 								this.emit("message", {
 									role: "assistant",
-									content: item.text,
+									content: text,
 									sessionRole: "architect" as Role,
 									timestamp: new Date(),
 								});
+
+								// For OpenCode, check if plan is complete based on text content
+								if (isOpenCodeProvider && text.includes("PLAN COMPLETE")) {
+									plan = _fullText.replace("PLAN COMPLETE", "").trim();
+									this.logger.logEvent("ARCHITECT_PLAN_CREATED_FROM_TEXT", {
+										planLength: (plan ?? "").length,
+										turnCount,
+									});
+									return plan;
+								}
 							} else if (item.type === "tool_use") {
 								// Emit tool usage
 								this.emit("tool_use", {
@@ -110,7 +130,7 @@ export class Architect extends EventEmitter {
 									input: item.input,
 								});
 
-								// Detect plan completion via ExitPlanMode tool
+								// Detect plan completion via ExitPlanMode tool (Claude Code)
 								// biome-ignore lint/suspicious/noExplicitAny: Provider tool item structure
 								const it: any = item as any;
 								if (it.name === "ExitPlanMode" && it.input?.plan) {
@@ -131,7 +151,21 @@ export class Architect extends EventEmitter {
 							}
 						}
 
-						// No fallback text capture — plan must be returned via ExitPlanMode tool
+						// For OpenCode, also check if we have accumulated a complete plan
+						if (
+							isOpenCodeProvider &&
+							_fullText.includes("PLAN COMPLETE") &&
+							!plan
+						) {
+							plan = _fullText.replace("PLAN COMPLETE", "").trim();
+							this.logger.logEvent("ARCHITECT_PLAN_CREATED_FROM_FULLTEXT", {
+								planLength: (plan ?? "").length,
+								turnCount,
+							});
+							return plan;
+						}
+
+						// No fallback text capture for Claude Code — plan must be returned via ExitPlanMode tool
 					}
 				}
 			}

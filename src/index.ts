@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import os from "node:os";
+import path from "node:path";
 import readline from "node:readline";
 import {
 	DEFAULT_PAIR_CONFIG,
@@ -14,7 +16,11 @@ import { Navigator } from "./conversations/Navigator.js";
 import { InkDisplayManager } from "./display.js";
 import { type PairMcpServer, startPairMcpServer } from "./mcp/httpServer.js";
 import { agentProviderFactory } from "./providers/factory.js";
-import type { EmbeddedAgentProvider } from "./providers/types.js";
+import type {
+	AgentProvider,
+	EmbeddedAgentProvider,
+	ProviderConfig,
+} from "./providers/types.js";
 import { isEmbeddedProvider } from "./providers/types.js";
 import { isFileModificationTool } from "./types/core.js";
 import {
@@ -41,6 +47,20 @@ import { getVersion } from "./utils/version.js";
 /**
  * Claude pair programming orchestrator
  */
+function resolveProjectPath(projectPath: string): string {
+	const trimmed = projectPath?.trim() ?? "";
+	if (!trimmed) {
+		return process.cwd();
+	}
+	let expanded = trimmed;
+	if (expanded === "~") {
+		expanded = os.homedir();
+	} else if (expanded.startsWith("~/")) {
+		expanded = path.join(os.homedir(), expanded.slice(2));
+	}
+	return path.resolve(expanded);
+}
+
 class ClaudePairApp {
 	private architect!: Architect;
 	private navigator!: Navigator;
@@ -54,8 +74,10 @@ class ClaudePairApp {
 	private mcp?: PairMcpServer;
 	// Removed idle watchdog to minimize UI noise
 	private driverBuffer: string[] = [];
+	private projectPath!: string;
 	// Follow-up prompting handled at end of each cycle
 	// No nudge counters; a per-iteration buffer flush prevents growth
+	private providers: AgentProvider[] = [];
 
 	// driverBuffer holds a short transcript of recent driver actions
 	// It is flushed on permission checks and at the end of each iteration
@@ -137,14 +159,17 @@ class ClaudePairApp {
 	}
 
 	constructor(
-		private projectPath: string,
+		projectPath: string,
 		private task: string,
 	) {
 		const appConfig = loadConfig();
 		validateConfig(appConfig, agentProviderFactory.getAvailableProviders());
 		this.appConfig = appConfig;
 
-		this.config.projectPath = projectPath;
+		const normalizedProjectPath = resolveProjectPath(projectPath);
+		this.projectPath = normalizedProjectPath;
+
+		this.config.projectPath = normalizedProjectPath;
 		this.config.initialTask = task;
 
 		this.logger = new Logger("claude-pair-debug.log");
@@ -172,18 +197,36 @@ class ClaudePairApp {
 		const drvUrl = this.mcp.urls.driver;
 		this.logger.logEvent("APP_MCP_URLS", { navUrl, drvUrl });
 
+		const makeProviderConfig = (providerType: string): ProviderConfig => {
+			if (providerType === "opencode") {
+				return {
+					type: providerType,
+					options: {
+						mcpServers: {
+							"pair-navigator": { url: navUrl },
+							"pair-driver": { url: drvUrl },
+						},
+					},
+				};
+			}
+			return { type: providerType };
+		};
+
 		// Create providers for all agents
-		const architectProvider = agentProviderFactory.createProvider({
-			type: this.appConfig.architectProvider,
-		}) as EmbeddedAgentProvider;
+		const architectProvider = agentProviderFactory.createProvider(
+			makeProviderConfig(this.appConfig.architectProvider),
+		) as EmbeddedAgentProvider;
+		this.providers.push(architectProvider);
 
-		const navigatorProvider = agentProviderFactory.createProvider({
-			type: this.appConfig.navigatorProvider,
-		}) as EmbeddedAgentProvider;
+		const navigatorProvider = agentProviderFactory.createProvider(
+			makeProviderConfig(this.appConfig.navigatorProvider),
+		) as EmbeddedAgentProvider;
+		this.providers.push(navigatorProvider);
 
-		const driverProvider = agentProviderFactory.createProvider({
-			type: this.appConfig.driverProvider,
-		}) as EmbeddedAgentProvider;
+		const driverProvider = agentProviderFactory.createProvider(
+			makeProviderConfig(this.appConfig.driverProvider),
+		) as EmbeddedAgentProvider;
+		this.providers.push(driverProvider);
 
 		// Create agents with providers
 		this.architect = new Architect(
@@ -303,7 +346,7 @@ class ClaudePairApp {
 				this.logger.logEvent("APP_PLAN_CREATION_FAILED", {
 					task: this.task.substring(0, 100),
 				});
-				this.cleanup();
+				await this.cleanup();
 				return;
 			}
 
@@ -329,14 +372,14 @@ class ClaudePairApp {
 
 			// Implementation loop completed - this should only happen when task is done
 			if (this.sessionTimer) clearTimeout(this.sessionTimer);
-			this.cleanup();
+			await this.cleanup();
 			return; // Graceful end without forcing process exit
 		} catch (error) {
 			this.logger.logEvent("APP_START_FAILED", {
 				error: error instanceof Error ? error.message : String(error),
 			});
 			console.error("Failed to start:", error);
-			this.cleanup();
+			await this.cleanup();
 			return; // Do not hard-exit
 		}
 	}
@@ -367,12 +410,15 @@ class ClaudePairApp {
 		// Start driver implementation
 		this.logger.logEvent("IMPLEMENTATION_LOOP_DRIVER_START", {});
 		let driverMessages = await this.driver.startImplementation(plan);
+		this.driverBuffer = [];
 		this.logger.logEvent("IMPLEMENTATION_LOOP_DRIVER_INITIAL_MESSAGES", {
 			messageCount: driverMessages.length,
 		});
 
 		// Main implementation loop
 		let loopCount = 0;
+		let awaitingReviewDecision = false;
+		let awaitingDriverResponseAfterGuidance = false;
 		while (true) {
 			if (Date.now() > deadline) {
 				this.logger.logEvent("IMPLEMENTATION_LOOP_DEADLINE_EXIT", {});
@@ -385,6 +431,13 @@ class ClaudePairApp {
 				navigatorSessionId: this.navigator.getSessionId(),
 			});
 
+			const driverProducedOutput = (driverMessages || []).some(
+				(msg) => msg && msg.trim().length > 0,
+			);
+			if (driverProducedOutput) {
+				awaitingDriverResponseAfterGuidance = false;
+			}
+
 			// Check if driver requested review via MCP tools
 			const driverCommands = this.driver.getAndClearDriverCommands();
 			const driverCommand =
@@ -392,7 +445,7 @@ class ClaudePairApp {
 			const dcType = driverCommand?.type;
 
 			// Guardrail: if driver text indicates completion intent but no review tool was called, nudge to request review immediately
-			if (!dcType) {
+			if (!dcType && !awaitingReviewDecision) {
 				const combinedDriverText = (driverMessages || [])
 					.join("\n")
 					.toLowerCase();
@@ -408,23 +461,32 @@ class ClaudePairApp {
 			}
 
 			if (dcType === "request_review") {
+				awaitingReviewDecision = true;
 				this.logger.logEvent("IMPLEMENTATION_LOOP_REVIEW_REQUESTED", {});
 				const combinedMessage = Driver.combineMessagesForNavigator([
 					...this.driverBuffer,
 					...driverMessages,
 				]);
 				this.driverBuffer = [];
-				if (combinedMessage) {
+				const trimmed = combinedMessage.trim();
+				const navigatorMessage =
+					trimmed.length > 0
+						? combinedMessage
+						: driverCommand?.context?.trim().length
+							? (driverCommand?.context ?? "")
+							: "Driver reports implementation complete and requested review via mcp__driver__driverRequestReview.";
+				const messageForNavigator = navigatorMessage.trim();
+				if (messageForNavigator.length > 0) {
 					this.display.showTransfer("driver", "navigator", "Review request");
 					this.logger.logEvent(
 						"IMPLEMENTATION_LOOP_SENDING_REVIEW_TO_NAVIGATOR",
 						{
-							messageLength: combinedMessage.length,
+							messageLength: messageForNavigator.length,
 						},
 					);
 					// biome-ignore lint/suspicious/noExplicitAny: Navigator command response type from Claude Code SDK
 					const _navResp: any =
-						await this.navigator.processDriverMessage(combinedMessage);
+						await this.navigator.processDriverMessage(messageForNavigator);
 					// biome-ignore lint/suspicious/noExplicitAny: Navigator command array type from Claude Code SDK
 					const navCommands: any[] = Array.isArray(_navResp)
 						? _navResp
@@ -433,6 +495,7 @@ class ClaudePairApp {
 							: [];
 
 					if (navCommands.length > 0) {
+						awaitingReviewDecision = false;
 						let reviewComments: string | null = null;
 						let shouldEnd = false;
 						let endSummary: string | undefined;
@@ -490,7 +553,7 @@ class ClaudePairApp {
 						let attempts = 0;
 						while (attempts < 5) {
 							attempts++;
-							const retryPrompt = `${combinedMessage}\n\nSTRICT: Respond with exactly one MCP tool call: mcp__navigator__navigatorCodeReview OR mcp__navigator__navigatorComplete. No other text.`;
+							const retryPrompt = `${messageForNavigator}\n\nSTRICT: Respond with exactly one MCP tool call: mcp__navigator__navigatorCodeReview OR mcp__navigator__navigatorComplete. No other text.`;
 							const retryResp =
 								await this.navigator.processDriverMessage(retryPrompt);
 							const cmds: NavigatorCommand[] = Array.isArray(retryResp)
@@ -558,14 +621,16 @@ class ClaudePairApp {
 								"IMPLEMENTATION_LOOP_NAVIGATOR_EMPTY_DECISION",
 								{},
 							);
-							driverMessages =
-								await this.driver.continueWithFeedback("Please continue.");
 						}
 					}
 					continue; // Next loop
 				}
 
-				// Default path: simply continue
+				// Default path: simply continue (unless we're waiting on a review decision or guidance follow-up)
+				if (awaitingReviewDecision || awaitingDriverResponseAfterGuidance) {
+					await new Promise((resolve) => setTimeout(resolve, 500));
+					continue;
+				}
 				this.driverBuffer = [];
 				driverMessages =
 					await this.driver.continueWithFeedback("Please continue.");
@@ -604,6 +669,7 @@ class ClaudePairApp {
 					}
 
 					if (shouldEnd) {
+						awaitingDriverResponseAfterGuidance = false;
 						this.logger.logEvent("IMPLEMENTATION_LOOP_COMPLETED", {
 							reason: endReason || "Session completed by navigator",
 						});
@@ -619,7 +685,12 @@ class ClaudePairApp {
 						"Continue with your implementation based on the guidance provided.";
 					driverMessages =
 						await this.driver.continueWithFeedback(guidanceMessage);
+					awaitingDriverResponseAfterGuidance =
+						(driverMessages || []).length === 0 ||
+						(driverMessages || []).every((msg) => !msg || !msg.trim());
+					continue;
 				}
+				awaitingDriverResponseAfterGuidance = true;
 			} else {
 				// Empty batch received. Brief backoff, then continue.
 				this.logger.logEvent("IMPLEMENTATION_LOOP_EMPTY_BATCH", {});
@@ -666,6 +737,9 @@ class ClaudePairApp {
 
 		// Navigator events
 		this.navigator.on("message", (message) => {
+			if (this.display.getPhase && this.display.getPhase() === "complete") {
+				return;
+			}
 			this.display.showNavigatorTurn(message.content);
 		});
 
@@ -716,14 +790,33 @@ class ClaudePairApp {
 	/**
 	 * Clean up resources
 	 */
-	private cleanup(): void {
+	private async cleanup(): Promise<void> {
 		this.display?.cleanup();
 		this.logger?.close();
 		if (this.sessionTimer) clearTimeout(this.sessionTimer);
-		// No idle timer to clear
 		try {
-			void this.mcp?.close();
-		} catch {}
+			if (this.mcp) {
+				await this.mcp.close();
+			}
+		} catch (error) {
+			this.logger?.logEvent("MCP_CLOSE_ERROR", {
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
+		if (this.providers.length > 0) {
+			await Promise.allSettled(
+				this.providers.map((provider) =>
+					provider.cleanup
+						? provider.cleanup().catch((error) => {
+								this.logger?.logEvent("PROVIDER_CLEANUP_ERROR", {
+									provider: provider.name,
+									error: error instanceof Error ? error.message : String(error),
+								});
+							})
+						: Promise.resolve(),
+				),
+			);
+		}
 	}
 
 	private async stopAllAndExit(completionMessage?: string): Promise<void> {
@@ -735,7 +828,7 @@ class ClaudePairApp {
 		try {
 			await Promise.allSettled([this.driver.stop(), this.navigator.stop()]);
 		} catch {}
-		this.cleanup();
+		await this.cleanup();
 		process.exit(0);
 	}
 }
