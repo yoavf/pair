@@ -48,9 +48,9 @@ export class InkDisplayManager {
 		// Create a wrapper component that exposes the hooks
 		const AppWrapper: React.FC = () => {
 			const providers = {
-				architect: config.architectProvider,
-				navigator: config.navigatorProvider,
-				driver: config.driverProvider,
+				architect: config.architectConfig.provider,
+				navigator: config.navigatorConfig.provider,
+				driver: config.driverConfig.provider,
 			};
 			const { state, addMessage, updateActivity, setPhase, setQuitState } =
 				useMessages(projectPath, initialTask, providers);

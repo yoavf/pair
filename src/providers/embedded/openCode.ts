@@ -44,13 +44,6 @@ const ENV_SERVER_TIMEOUT = Number.parseInt(
 const DEFAULT_SERVER_TIMEOUT = Number.isNaN(ENV_SERVER_TIMEOUT)
 	? 5000
 	: ENV_SERVER_TIMEOUT;
-const DEFAULT_MODEL_PROVIDER_ID =
-	process.env.OPENCODE_MODEL_PROVIDER || "openrouter";
-const DEFAULT_MODEL_ID =
-	process.env.OPENCODE_MODEL_ID || "google/gemini-2.5-pro";
-const ENV_AGENT_ARCHITECT = process.env.OPENCODE_AGENT_ARCHITECT;
-const ENV_AGENT_NAVIGATOR = process.env.OPENCODE_AGENT_NAVIGATOR;
-const ENV_AGENT_DRIVER = process.env.OPENCODE_AGENT_DRIVER;
 
 type OpenCodeClient = ReturnType<typeof createOpencodeClient>;
 
@@ -977,6 +970,7 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 	private readonly activeCleanups = new Set<() => Promise<void>>();
 	private externalMcpWarningLogged = false;
 	private lastResolvedDirectory?: string;
+	protected activeProjectPath?: string;
 
 	constructor(config: ProviderConfig) {
 		super(config);
@@ -1014,8 +1008,40 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 			parsed.baseUrl ??
 			process.env.OPENCODE_BASE_URL ??
 			(startServer ? undefined : DEFAULT_BASE_URL);
-		const modelId = parsed.model?.modelId || config.model || DEFAULT_MODEL_ID;
-		const providerId = parsed.model?.providerId || DEFAULT_MODEL_PROVIDER_ID;
+
+		// Parse model configuration from provider config
+		// Format: "provider/model" where model part might contain additional slashes
+		// OpenCode requires explicit model configuration
+		let providerId: string;
+		let modelId: string;
+
+		if (config.model) {
+			const firstSlash = config.model.indexOf("/");
+			if (firstSlash !== -1) {
+				// Split at first slash: provider/model
+				providerId = config.model.substring(0, firstSlash);
+				modelId = config.model.substring(firstSlash + 1);
+			} else {
+				// No slash means incomplete configuration for OpenCode
+				throw new Error(
+					`OpenCode requires full model specification. Got: '${config.model}'. Expected format: 'provider/model' (e.g., 'openrouter/google/gemini-2.5-flash')`,
+				);
+			}
+		} else if (parsed.model?.providerId && parsed.model?.modelId) {
+			// Fallback to parsed config from options if both are provided
+			providerId = parsed.model.providerId;
+			modelId = parsed.model.modelId;
+		} else {
+			throw new Error(
+				"OpenCode provider requires model configuration. Please specify model with format 'provider/model' (e.g., '--architect opencode/openrouter/google/gemini-2.5-flash')",
+			);
+		}
+
+		if (!providerId || !modelId) {
+			throw new Error(
+				"OpenCode provider requires model configuration. Please specify model with format 'provider/model'",
+			);
+		}
 
 		this.providerConfig = {
 			baseUrl,
@@ -1026,9 +1052,9 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 			},
 			agents: {
 				// Use OpenCode's built-in "plan" agent for architect role
-				architect: parsed.agents?.architect ?? ENV_AGENT_ARCHITECT ?? "plan",
-				navigator: parsed.agents?.navigator ?? ENV_AGENT_NAVIGATOR,
-				driver: parsed.agents?.driver ?? ENV_AGENT_DRIVER,
+				architect: parsed.agents?.architect ?? "plan",
+				navigator: parsed.agents?.navigator ?? undefined,
+				driver: parsed.agents?.driver ?? undefined,
 			},
 			startServer,
 			server: serverConfig ?? {

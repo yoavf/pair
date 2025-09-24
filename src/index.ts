@@ -31,12 +31,7 @@ import {
 import type { PermissionRequest } from "./types/permission.js";
 import type { NavigatorCommand } from "./types.js";
 import { displayBanner } from "./utils/banner.js";
-import {
-	type AppConfig,
-	loadConfig,
-	parseModelConfig,
-	validateConfig,
-} from "./utils/config.js";
+import { type AppConfig, loadConfig, validateConfig } from "./utils/config.js";
 import { Logger } from "./utils/logger.js";
 import { TIMEOUT_CONFIG, TimeoutManager } from "./utils/timeouts.js";
 import {
@@ -850,24 +845,35 @@ class ClaudePairApp {
 function showHelp(): void {
 	console.log("Usage: pair [options]");
 	console.log("\nAvailable options:");
-	console.log("  -p, --prompt <text>       Specify the task prompt");
+	console.log("  -p, --prompt <text>           Specify the task prompt");
 	console.log(
-		"  --path <path>             Set the project path (default: current directory)",
+		"  --path <path>                 Set the project path (default: current directory)",
 	);
-	console.log("  -f, --file <file>         Read prompt from file");
+	console.log("  -f, --file <file>             Read prompt from file");
 	console.log(
-		"  --architect <provider/model>  Set architect provider and model",
+		"  --architect <provider>        Set architect provider (claude-code, opencode)",
 	);
-	console.log(
-		"  --navigator <provider/model>  Set navigator provider and model",
-	);
-	console.log("  --driver <provider/model>     Set driver provider and model");
-	console.log("  --version                 Show version information");
-	console.log("  --help                    Show this help message");
+	console.log("  --architect-model <model>     Set architect model");
+	console.log("  --navigator <provider>        Set navigator provider");
+	console.log("  --navigator-model <model>     Set navigator model");
+	console.log("  --driver <provider>           Set driver provider");
+	console.log("  --driver-model <model>        Set driver model");
+	console.log("  --version                     Show version information");
+	console.log("  --help                        Show this help message");
 	console.log("\nExamples:");
+	console.log("  # Use defaults (Claude Code with default models)");
 	console.log('  pair -p "Add dark mode toggle"');
+	console.log("");
+	console.log("  # Use Claude Code with specific model for architect");
 	console.log(
-		"  pair --architect opencode/openai/gpt-4 --navigator claude-code --driver opencode/openrouter/gemini-2.0-flash",
+		'  pair -p "Refactor auth" --architect claude-code --architect-model opus-4.1',
+	);
+	console.log("");
+	console.log(
+		"  # Mix providers: OpenCode for architect, Claude Code for others",
+	);
+	console.log(
+		'  pair -p "Add tests" --architect opencode --architect-model openrouter/google/gemini-2.0-flash',
 	);
 }
 
@@ -934,43 +940,50 @@ async function main(): Promise<void> {
 				promptFile = arg.split("=")[1];
 			} else if (arg === "--architect") {
 				if (i + 1 < args.length) {
-					config.architectConfig = parseModelConfig(
-						args[i + 1],
-						config.architectConfig,
-					);
+					config.architectConfig.provider = args[i + 1];
 					i++;
 				}
 			} else if (arg.startsWith("--architect=")) {
-				config.architectConfig = parseModelConfig(
-					arg.substring("--architect=".length),
-					config.architectConfig,
+				config.architectConfig.provider = arg.substring("--architect=".length);
+			} else if (arg === "--architect-model") {
+				if (i + 1 < args.length) {
+					config.architectConfig.model = args[i + 1];
+					i++;
+				}
+			} else if (arg.startsWith("--architect-model=")) {
+				config.architectConfig.model = arg.substring(
+					"--architect-model=".length,
 				);
 			} else if (arg === "--navigator") {
 				if (i + 1 < args.length) {
-					config.navigatorConfig = parseModelConfig(
-						args[i + 1],
-						config.navigatorConfig,
-					);
+					config.navigatorConfig.provider = args[i + 1];
 					i++;
 				}
 			} else if (arg.startsWith("--navigator=")) {
-				config.navigatorConfig = parseModelConfig(
-					arg.substring("--navigator=".length),
-					config.navigatorConfig,
+				config.navigatorConfig.provider = arg.substring("--navigator=".length);
+			} else if (arg === "--navigator-model") {
+				if (i + 1 < args.length) {
+					config.navigatorConfig.model = args[i + 1];
+					i++;
+				}
+			} else if (arg.startsWith("--navigator-model=")) {
+				config.navigatorConfig.model = arg.substring(
+					"--navigator-model=".length,
 				);
 			} else if (arg === "--driver") {
 				if (i + 1 < args.length) {
-					config.driverConfig = parseModelConfig(
-						args[i + 1],
-						config.driverConfig,
-					);
+					config.driverConfig.provider = args[i + 1];
 					i++;
 				}
 			} else if (arg.startsWith("--driver=")) {
-				config.driverConfig = parseModelConfig(
-					arg.substring("--driver=".length),
-					config.driverConfig,
-				);
+				config.driverConfig.provider = arg.substring("--driver=".length);
+			} else if (arg === "--driver-model") {
+				if (i + 1 < args.length) {
+					config.driverConfig.model = args[i + 1];
+					i++;
+				}
+			} else if (arg.startsWith("--driver-model=")) {
+				config.driverConfig.model = arg.substring("--driver-model=".length);
 			} else if (!arg.startsWith("-")) {
 				if (projectPath === process.cwd()) {
 					projectPath = arg;

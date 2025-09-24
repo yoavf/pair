@@ -55,28 +55,6 @@ export const DEFAULT_CONFIG: AppConfig = {
 };
 
 /**
- * Parse model configuration from string format "provider/model"
- */
-export function parseModelConfig(
-	configStr: string | undefined,
-	defaultConfig: ModelConfig,
-): ModelConfig {
-	if (!configStr) return defaultConfig;
-
-	const firstSlashIndex = configStr.indexOf("/");
-	if (firstSlashIndex === -1) {
-		// No slash, treat entire string as provider
-		return { provider: configStr, model: undefined };
-	}
-
-	// Split at first slash: provider / model
-	const provider = configStr.substring(0, firstSlashIndex);
-	const model = configStr.substring(firstSlashIndex + 1);
-
-	return { provider, model: model || undefined };
-}
-
-/**
  * Load configuration from environment variables with fallbacks to defaults
  */
 export function loadConfig(): AppConfig {
@@ -99,18 +77,9 @@ export function loadConfig(): AppConfig {
 			60 *
 			1000,
 		enableSyncStatus: process.env.CLAUDE_PAIR_DISABLE_SYNC_STATUS !== "true",
-		architectConfig: parseModelConfig(
-			process.env.CLAUDE_PAIR_ARCHITECT_CONFIG,
-			DEFAULT_CONFIG.architectConfig,
-		),
-		navigatorConfig: parseModelConfig(
-			process.env.CLAUDE_PAIR_NAVIGATOR_CONFIG,
-			DEFAULT_CONFIG.navigatorConfig,
-		),
-		driverConfig: parseModelConfig(
-			process.env.CLAUDE_PAIR_DRIVER_CONFIG,
-			DEFAULT_CONFIG.driverConfig,
-		),
+		architectConfig: { ...DEFAULT_CONFIG.architectConfig },
+		navigatorConfig: { ...DEFAULT_CONFIG.navigatorConfig },
+		driverConfig: { ...DEFAULT_CONFIG.driverConfig },
 	};
 
 	return config;
@@ -163,6 +132,12 @@ export function validateConfig(
 			if (!availableProviders.includes(modelConfig.provider)) {
 				throw new Error(
 					`Unknown ${name} provider type: "${modelConfig.provider}". Available providers: ${availableProviders.join(", ")}`,
+				);
+			}
+			// Validate OpenCode requires model
+			if (modelConfig.provider === "opencode" && !modelConfig.model) {
+				throw new Error(
+					`OpenCode provider requires a model. Please specify --${name}-model with format like 'openrouter/google/gemini-2.0-flash'`,
 				);
 			}
 		}

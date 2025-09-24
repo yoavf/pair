@@ -5,7 +5,7 @@ import {
 	normalizeToolInput,
 	resolvePermissionToolName,
 	resolveToolName,
-} from "../../src/providers/embedded/openCode/normalization.js";
+} from "../../../src/providers/embedded/openCode/normalization.js";
 
 describe("OpenCode tool normalization", () => {
 	it("maps pair-* navigator tools to canonical names", () => {
