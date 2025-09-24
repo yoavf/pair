@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { OpenCodeProvider } from '../../../src/providers/embedded/openCode.js';
+import { OpenCodeProvider } from '../../../src/providers/embedded/opencode.js';
 import type { ProviderConfig } from '../../../src/providers/types.js';
 
 describe('OpenCodeProvider Configuration', () => {

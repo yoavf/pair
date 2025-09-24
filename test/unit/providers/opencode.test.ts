@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { OpenCodeProvider } from '../../../src/providers/embedded/openCode.js';
+import { OpenCodeProvider } from '../../../src/providers/embedded/opencode.js';
 import type { StreamingSessionOptions } from '../../../src/providers/types.js';
 
 interface ServerHandleRecord {

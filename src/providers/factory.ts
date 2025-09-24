@@ -3,7 +3,7 @@
  */
 
 import { ClaudeCodeProvider } from "./embedded/claudeCode.js";
-import { OpenCodeProvider } from "./embedded/openCode.js";
+import { OpenCodeProvider } from "./embedded/opencode.js";
 import type {
 	AgentProvider,
 	AgentProviderFactory,
