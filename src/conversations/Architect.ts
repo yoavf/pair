@@ -13,6 +13,7 @@ import type { Logger } from "../utils/logger.js";
 export class Architect extends EventEmitter {
 	private sessionId: string | null = null;
 	private session: AgentSession | null = null;
+	private detectPlanCompletion?: (message: any) => string | null;
 
 	constructor(
 		private systemPrompt: string,
@@ -44,21 +45,28 @@ export class Architect extends EventEmitter {
 				? undefined
 				: this.allowedTools;
 
-			// Create session with provider
-			// Note: Architect doesn't use MCP server, but we keep the parameter for consistency
+			// Create session with provider and MCP server for completePlan tool
 			this.session = this.provider.createSession({
 				systemPrompt: this.systemPrompt,
 				allowedTools: toolsToPass,
 				maxTurns: this.maxTurns,
 				projectPath: this.projectPath,
-				mcpServerUrl: this.mcpServerUrl || "", // Empty for Architect since it doesn't use MCP
+				mcpServerUrl: this.mcpServerUrl || "",
 				permissionMode: "plan",
+				diagnosticLogger: (event, data) => {
+					this.logger.logEvent(event, {
+						agent: "architect",
+						provider: this.provider.name,
+						...data,
+					});
+				},
 			});
 
-			// Send the initial prompt
-			this.session.sendMessage(
-				`Our task is to: ${task}\n\nPlease create a clear, step-by-step implementation plan tailored to this repository.\n- Focus on concrete steps, specific files, and commands.\n- Keep it concise and actionable.\n- Do not implement changes now.\n\nWhen your plan is ready, call the ExitPlanMode tool with { plan: <your full plan> } to finish planning.`,
-			);
+			// Get provider-specific prompt and completion logic
+			const { prompt, detectPlanCompletion } =
+				this.provider.getPlanningConfig(task);
+			this.detectPlanCompletion = detectPlanCompletion;
+			this.session.sendMessage(prompt);
 
 			for await (const message of this.session) {
 				// Capture session ID
@@ -93,12 +101,13 @@ export class Architect extends EventEmitter {
 
 						for (const item of content) {
 							if (item.type === "text") {
-								_fullText += `${item.text}\n`;
+								const text = item.text ?? "";
+								_fullText += `${text}\n`;
 
 								// Emit for display
 								this.emit("message", {
 									role: "assistant",
-									content: item.text,
+									content: text,
 									sessionRole: "architect" as Role,
 									timestamp: new Date(),
 								});
@@ -109,29 +118,21 @@ export class Architect extends EventEmitter {
 									tool: item.name,
 									input: item.input,
 								});
-
-								// Detect plan completion via ExitPlanMode tool
-								// biome-ignore lint/suspicious/noExplicitAny: Provider tool item structure
-								const it: any = item as any;
-								if (it.name === "ExitPlanMode" && it.input?.plan) {
-									plan = it.input.plan as string;
-									this.logger.logEvent("ARCHITECT_PLAN_CREATED", {
-										planLength: (plan ?? "").length,
-										turnCount,
-									});
-									// Robust early-exit: as soon as ExitPlanMode is called with a plan,
-									// return the plan without waiting for a tool_result from the host.
-									// This avoids environments that don't implement the ExitPlanMode tool_result handshake.
-									this.logger.logEvent("ARCHITECT_EARLY_RETURN_AFTER_PLAN", {
-										reason: "exit_plan_mode_called",
-										turnCount,
-									});
-									return plan;
-								}
 							}
 						}
 
-						// No fallback text capture — plan must be returned via ExitPlanMode tool
+						// Use provider-specific completion detection
+						if (this.detectPlanCompletion) {
+							const detectedPlan = this.detectPlanCompletion(message);
+							if (detectedPlan) {
+								plan = detectedPlan;
+								this.logger.logEvent("ARCHITECT_PLAN_CREATED", {
+									planLength: (plan ?? "").length,
+									turnCount,
+								});
+								return plan;
+							}
+						}
 					}
 				}
 			}

@@ -42,6 +42,10 @@ CRITICAL: You MUST respond with EXACTLY ONE MCP tool call:
 
 Only mcp__navigator__navigatorCodeReview OR mcp__navigator__navigatorComplete. No text.`;
 
+const NAVIGATOR_CONTINUE_PROMPT_TEMPLATE = `{driverMessage}
+
+I'm continuing with the implementation. Let me know if you have any concerns.`;
+
 // Permission decision type using proper NavigatorCommandType subset
 type PermissionDecisionType =
 	| Extract<NavigatorCommandType, "approve" | "deny">
@@ -103,11 +107,13 @@ export class Navigator extends EventEmitter {
 	 */
 	async processDriverMessage(
 		driverMessage: string,
+		isReviewRequested = false,
 	): Promise<NavigatorCommand[] | null> {
 		this.logger.logEvent("NAVIGATOR_PROCESSING_DRIVER_MESSAGE", {
 			messageLength: driverMessage.length,
 			sessionId: this.sessionId,
 			isFirstMessage: !this.sessionId,
+			isReviewRequested,
 		});
 
 		try {
@@ -124,10 +130,11 @@ export class Navigator extends EventEmitter {
 				await this.waitForNoPendingTools();
 				this.inputStream?.pushText(prompt);
 			} else {
-				const prompt = NAVIGATOR_REVIEW_PROMPT_TEMPLATE.replace(
-					"{driverMessage}",
-					driverMessage,
-				);
+				// Only use review prompt if explicitly requested
+				const template = isReviewRequested
+					? NAVIGATOR_REVIEW_PROMPT_TEMPLATE
+					: NAVIGATOR_CONTINUE_PROMPT_TEMPLATE;
+				const prompt = template.replace("{driverMessage}", driverMessage);
 				await this.waitForNoPendingTools();
 				this.inputStream?.pushText(prompt);
 			}
@@ -247,6 +254,13 @@ export class Navigator extends EventEmitter {
 			canUseTool: navCanUseTool,
 			disallowedTools: ["Write", "Edit", "MultiEdit"],
 			includePartialMessages: true,
+			diagnosticLogger: (event, data) => {
+				this.logger.logEvent(event, {
+					agent: "navigator",
+					provider: this.provider.name,
+					...data,
+				});
+			},
 		});
 
 		// Use the session's input stream
@@ -281,7 +295,11 @@ export class Navigator extends EventEmitter {
 		signal?.throwIfAborted();
 
 		const toolDetails = `Tool: ${request.toolName}\nInput: ${JSON.stringify(request.input, null, 2)}`;
-		const strictCore = `Respond with EXACTLY ONE decision MCP tool call:\n- mcp__navigator__navigatorApprove\n- mcp__navigator__navigatorDeny`;
+		const strictCore = `CRITICAL: This is a PERMISSION REQUEST. You MUST respond with EXACTLY ONE of these MCP tool calls:
+- mcp__navigator__navigatorApprove (if you approve this specific edit)
+- mcp__navigator__navigatorDeny (if you reject this specific edit)
+
+DO NOT call mcp__navigator__navigatorComplete or mcp__navigator__navigatorCodeReview for permission requests.`;
 
 		const header =
 			!this.sessionId && this.plan && this.originalTask
@@ -428,21 +446,6 @@ export class Navigator extends EventEmitter {
 								}
 							}
 						}
-						// Process MCP tool calls to create NavigatorCommands
-						for (const [toolId, toolData] of this.toolResults) {
-							if (this.pendingTools.has(toolId)) continue; // Wait for tool_result
-
-							const cmd = this.convertMcpToolToCommand(
-								toolData.toolName,
-								toolData.input,
-							);
-							if (cmd) {
-								this.pendingCommands.push(cmd);
-								// Only create bubbles when processing tool_result below to avoid duplicates
-							}
-						}
-
-						// No fallback text parsing — MCP tools only
 					}
 				} else if (
 					message.type === "user" &&
@@ -502,20 +505,14 @@ export class Navigator extends EventEmitter {
 								}
 							}
 						}
-						if (this.pendingTools.size === 0) this.resolvePendingToolWaiters();
+						if (this.pendingTools.size === 0) {
+							this.resolvePendingToolWaiters();
+							this.deliverPendingCommandsIfReady();
+						}
 					}
 				} else if (message.type === "result") {
-					// Regular command processing - use MCP commands
-					const cmds =
-						this.pendingCommands.length > 0 ? this.pendingCommands : [];
-					this.pendingCommands = [];
-					this.toolResults.clear();
-					// Review-only mode: no stray text synthesis
-					const resolver = this.batchResolvers.shift();
-					if (resolver) resolver(cmds);
-					this.logger.logEvent("NAVIGATOR_BATCH_RESULT", {
-						commandCount: cmds.length,
-					});
+					// Some providers emit a "result" sentinel when a batch is complete
+					this.deliverPendingCommandsIfReady(true);
 				}
 			}
 		} catch (err) {
@@ -529,6 +526,24 @@ export class Navigator extends EventEmitter {
 		return new Promise((resolve) => {
 			this.batchResolvers.push(resolve);
 		});
+	}
+
+	private deliverPendingCommandsIfReady(force = false): void {
+		if (this.pendingTools.size > 0) return;
+		if (this.pendingCommands.length === 0 && !force) return;
+		const resolver = this.batchResolvers.shift();
+		if (!resolver) return;
+		// Take only the commands accumulated for this batch
+		const commands = this.pendingCommands.slice();
+		this.pendingCommands = [];
+		this.toolResults.clear();
+		try {
+			resolver(commands);
+		} finally {
+			this.logger.logEvent("NAVIGATOR_BATCH_RESULT", {
+				commandCount: commands.length,
+			});
+		}
 	}
 
 	private resolvePendingToolWaiters() {
@@ -570,14 +585,13 @@ export class Navigator extends EventEmitter {
 		);
 	}
 
-	/**
-	 * Convert MCP tool call to NavigatorCommand
-	 */
 	private convertMcpToolToCommand(
 		toolName: string,
 		input: any,
 	): NavigatorCommand | null {
-		switch (toolName) {
+		const normalized = Navigator.normalizeNavigatorTool(toolName);
+
+		switch (normalized) {
 			case "mcp__navigator__navigatorCodeReview":
 				return {
 					type: "code_review",
@@ -587,21 +601,46 @@ export class Navigator extends EventEmitter {
 			case "mcp__navigator__navigatorComplete":
 				return { type: "complete", summary: input.summary };
 			case "mcp__navigator__navigatorApprove":
-				return { type: "approve", comment: input.comment };
+				if (this.inPermissionApproval) {
+					return { type: "approve", comment: input.comment };
+				}
+				return {
+					type: "code_review",
+					pass: true,
+					comment: input.comment ?? "Navigator approved the implementation.",
+				};
 			case "mcp__navigator__navigatorDeny":
-				return { type: "deny", comment: input.comment };
+				if (this.inPermissionApproval) {
+					return { type: "deny", comment: input.comment };
+				}
+				return {
+					type: "code_review",
+					pass: false,
+					comment: input.comment ?? "Navigator flagged issues during review.",
+				};
 			default:
 				return null;
 		}
 	}
 
+	private static normalizeNavigatorTool(toolName: string): string {
+		if (toolName.startsWith("mcp__navigator__")) {
+			return toolName;
+		}
+		if (toolName.startsWith("pair-navigator_")) {
+			return `mcp__navigator__${toolName.slice("pair-navigator_".length)}`;
+		}
+		return toolName;
+	}
+
 	// No fallback text parsing — MCP tools only
 
 	private static isDecisionTool(name: string): boolean {
+		const normalized = Navigator.normalizeNavigatorTool(name);
 		return (
-			name === "mcp__navigator__navigatorApprove" ||
-			name === "mcp__navigator__navigatorDeny" ||
-			name === "mcp__navigator__navigatorCodeReview"
+			normalized === "mcp__navigator__navigatorApprove" ||
+			normalized === "mcp__navigator__navigatorDeny" ||
+			normalized === "mcp__navigator__navigatorCodeReview"
 		);
 	}
 

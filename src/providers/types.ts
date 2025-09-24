@@ -32,6 +32,11 @@ export interface AgentMessage {
 /**
  * Provider configuration for each agent role
  */
+export type DiagnosticLogger = (
+	event: string,
+	data: Record<string, unknown>,
+) => void;
+
 export interface ProviderConfig {
 	type: "claude-code" | "codex" | "opencode" | string;
 	apiKey?: string;
@@ -143,6 +148,7 @@ export interface SessionOptions {
 	permissionMode?: "default" | "plan";
 	includePartialMessages?: boolean;
 	disallowedTools?: string[];
+	diagnosticLogger?: DiagnosticLogger;
 }
 
 /**
@@ -170,6 +176,7 @@ export interface StreamingSessionOptions {
 	>;
 	disallowedTools?: string[];
 	includePartialMessages?: boolean;
+	diagnosticLogger?: DiagnosticLogger;
 }
 
 /**
@@ -189,6 +196,14 @@ export interface EmbeddedAgentProvider extends AgentProvider {
 	createStreamingSession(
 		options: StreamingSessionOptions,
 	): StreamingAgentSession;
+
+	/**
+	 * Get provider-specific planning configuration
+	 */
+	getPlanningConfig(task: string): {
+		prompt: string;
+		detectPlanCompletion: (message: AgentMessage) => string | null;
+	};
 }
 
 /**

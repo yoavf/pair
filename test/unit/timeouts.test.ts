@@ -8,7 +8,7 @@ import { TIMEOUT_CONFIG, TimeoutManager } from '../../src/utils/timeouts.js';
 describe('TIMEOUT_CONFIG', () => {
 	it('should have default timeout values', () => {
 		expect(TIMEOUT_CONFIG.TOOL_COMPLETION).toBe(120000); // 2 minutes
-		expect(TIMEOUT_CONFIG.PERMISSION_REQUEST).toBe(15000); // 15 seconds
+		expect(TIMEOUT_CONFIG.PERMISSION_REQUEST).toBe(45000); // 45 seconds
 	});
 
 	it('should allow environment variable overrides', () => {

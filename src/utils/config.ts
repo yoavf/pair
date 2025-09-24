@@ -43,8 +43,8 @@ export const DEFAULT_CONFIG: AppConfig = {
 	sessionHardLimitMs: 30 * 60 * 1000, // 30 minutes
 	enableSyncStatus: true, // Enable by default
 	architectProvider: "claude-code",
-	navigatorProvider: "claude-code",
-	driverProvider: "claude-code",
+	navigatorProvider: "opencode",
+	driverProvider: "opencode",
 };
 
 /**

@@ -16,6 +16,11 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': new URL('./src', import.meta.url).pathname,
+      '@opencode-ai/sdk': new URL('./node_modules/@opencode-ai/sdk/dist/index.js', import.meta.url).pathname,
     },
+    conditions: ['import', 'node'],
+  },
+  define: {
+    'process.env.NODE_ENV': '"test"',
   },
 });

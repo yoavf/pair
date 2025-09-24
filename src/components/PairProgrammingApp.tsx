@@ -43,6 +43,7 @@ const PairProgrammingApp: React.FC<Props> = ({ state, onExit, onCtrlC }) => {
 				quitState={state.quitState}
 				onCtrlC={onCtrlC}
 				allMessages={recentContent}
+				providers={state.providers}
 			/>
 		</Box>
 	);

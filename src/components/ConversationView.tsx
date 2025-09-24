@@ -100,6 +100,7 @@ const ConversationView: React.FC<Props> = React.memo(({ messages, phase }) => {
 				if (message.content?.includes("Starting pair coding session")) {
 					hasSeenTransition = true;
 					isFirstDriverMessage = true;
+					lastRole = undefined;
 				}
 
 				nodes.push(
