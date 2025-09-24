@@ -22,34 +22,13 @@ import {
 	navigatorMcpServer,
 } from "../utils/mcpServers.js";
 import { TIMEOUT_CONFIG, TimeoutManager } from "../utils/timeouts.js";
-
-// Navigator prompt templates
-const NAVIGATOR_INITIAL_PROMPT_TEMPLATE = `[CONTEXT REMINDER] You are the navigator in our pair coding session. You just finished planning our work.
-
-This is YOUR plan for "{originalTask}":
-
-{plan}
----
-This is what I've done so far: {driverMessage}`;
-
-const NAVIGATOR_REVIEW_PROMPT_TEMPLATE = `{driverMessage}
-
-Use git diff / read tools to double check my work.
-
-CRITICAL: You MUST respond with EXACTLY ONE MCP tool call:
-- mcp__navigator__navigatorCodeReview with comment="assessment" and pass=true/false
-- mcp__navigator__navigatorComplete with summary="what was accomplished"
-
-Only mcp__navigator__navigatorCodeReview OR mcp__navigator__navigatorComplete. No text.`;
-
-const NAVIGATOR_CONTINUE_PROMPT_TEMPLATE = `{driverMessage}
-
-I'm continuing with the implementation. Let me know if you have any concerns.`;
-
-// Permission decision type using proper NavigatorCommandType subset
-type PermissionDecisionType =
-	| Extract<NavigatorCommandType, "approve" | "deny">
-	| "none";
+import {
+	NAVIGATOR_CONTINUE_PROMPT_TEMPLATE,
+	NAVIGATOR_INITIAL_PROMPT_TEMPLATE,
+	NAVIGATOR_REVIEW_PROMPT_TEMPLATE,
+	NavigatorUtils,
+	type PermissionDecisionType,
+} from "./navigator/utils.js";
 
 /**
  * Navigator agent - monitors driver implementation and reviews code
@@ -153,12 +132,7 @@ export class Navigator extends EventEmitter {
 	 * Extract review comments from a failed code review
 	 */
 	static extractFailedReviewComment(command: NavigatorCommand): string | null {
-		if (command.type === "code_review" && command.pass === false) {
-			return (
-				command.comment || "Please address the review comments and continue."
-			);
-		}
-		return null;
+		return NavigatorUtils.extractFailedReviewComment(command);
 	}
 
 	/**
