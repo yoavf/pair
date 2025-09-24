@@ -196,20 +196,9 @@ class ClaudePairApp {
 		const drvUrl = this.mcp.urls.driver;
 		this.logger.logEvent("APP_MCP_URLS", { navUrl, drvUrl });
 
-		const makeProviderConfig = (providerType: string): ProviderConfig => {
-			if (providerType === "opencode") {
-				return {
-					type: providerType,
-					options: {
-						mcpServers: {
-							"pair-navigator": { url: navUrl },
-							"pair-driver": { url: drvUrl },
-						},
-					},
-				};
-			}
-			return { type: providerType };
-		};
+		const makeProviderConfig = (providerType: string): ProviderConfig => ({
+			type: providerType,
+		});
 
 		// Create providers for all agents
 		const architectProvider = agentProviderFactory.createProvider(

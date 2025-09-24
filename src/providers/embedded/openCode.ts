@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import type {
 	Event,
 	EventMessagePartRemoved,
@@ -33,13 +35,8 @@ import {
 const DEFAULT_BASE_URL =
 	process.env.OPENCODE_BASE_URL || "http://127.0.0.1:4096";
 const DEFAULT_SERVER_HOST = process.env.OPENCODE_HOSTNAME || "127.0.0.1";
-const ENV_SERVER_PORT = Number.parseInt(
-	process.env.OPENCODE_PORT || "4096",
-	10,
-);
-const DEFAULT_SERVER_PORT = Number.isNaN(ENV_SERVER_PORT)
-	? 4096
-	: ENV_SERVER_PORT;
+const ENV_SERVER_PORT = Number.parseInt(process.env.OPENCODE_PORT || "", 10);
+const DEFAULT_SERVER_PORT = Number.isNaN(ENV_SERVER_PORT) ? 0 : ENV_SERVER_PORT;
 const ENV_SERVER_TIMEOUT = Number.parseInt(
 	process.env.OPENCODE_SERVER_TIMEOUT || "5000",
 	10,
@@ -158,116 +155,11 @@ interface ServerOptions {
 	port?: number;
 	timeout?: number;
 	config?: Record<string, unknown>;
-	workingDirectory?: string;
 }
 
-interface SharedServerLease {
-	url: string;
-	release(): void;
-}
-
-interface SharedServerRecord {
-	refCount: number;
-	handlePromise: Promise<{ url: string; close(): void }>;
-}
-
-const sharedServerRegistry = new Map<string, SharedServerRecord>();
-
-function stableStringify(value: unknown): string {
-	if (value === null || typeof value !== "object") {
-		return JSON.stringify(value);
-	}
-	if (Array.isArray(value)) {
-		return `[${value.map((item) => stableStringify(item)).join(",")}]`;
-	}
-	const entries = Object.entries(value as Record<string, unknown>).sort(
-		(a, b) => a[0].localeCompare(b[0]),
-	);
-	return `{${entries
-		.map(([key, val]) => `${JSON.stringify(key)}:${stableStringify(val)}`)
-		.join(",")}}`;
-}
-
-function buildServerKey(options: ServerOptions): string {
-	return stableStringify({
-		hostname: options.hostname,
-		port: options.port,
-		timeout: options.timeout,
-		config: options.config ?? {},
-		workingDirectory: options.workingDirectory ?? null,
-	});
-}
-
-function releaseSharedServer(key: string): void {
-	const record = sharedServerRegistry.get(key);
-	if (!record) return;
-	record.refCount = Math.max(0, record.refCount - 1);
-	if (record.refCount === 0) {
-		sharedServerRegistry.delete(key);
-		record.handlePromise
-			.then((handle) => {
-				try {
-					handle.close();
-				} catch {}
-			})
-			.catch(() => {
-				// Server failed to start; nothing to close.
-			});
-	}
-}
-
-async function startOpencodeServer(
-	options: ServerOptions,
-): Promise<{ url: string; close(): void }> {
-	const { hostname, port, timeout, config } = options;
-
-	try {
-		const server = await createOpencodeServer({
-			hostname,
-			port,
-			timeout,
-			config,
-		});
-
-		return server;
-	} catch (error) {
-		throw new Error(
-			`Failed to start OpenCode server: ${error instanceof Error ? error.message : String(error)}`,
-		);
-	}
-}
-
-async function acquireSharedServer(
-	options: ServerOptions,
-): Promise<SharedServerLease> {
-	const key = buildServerKey(options);
-	let record = sharedServerRegistry.get(key);
-	if (!record) {
-		const handlePromise = startOpencodeServer(options);
-		record = {
-			refCount: 0,
-			handlePromise,
-		};
-		sharedServerRegistry.set(key, record);
-	}
-
-	record.refCount += 1;
-
-	try {
-		const handle = await record.handlePromise;
-		let released = false;
-		return {
-			url: handle.url,
-			release: () => {
-				if (released) return;
-				released = true;
-				releaseSharedServer(key);
-			},
-		};
-	} catch (error) {
-		releaseSharedServer(key);
-		throw error;
-	}
+interface SessionClientResources {
+	getClient(): Promise<OpenCodeClient>;
+	cleanup(): Promise<void>;
 }
 
 class AsyncMessageQueue<T> implements AsyncIterable<T> {
@@ -386,10 +278,12 @@ class OpenCodeSessionBase implements AsyncIterable<AgentMessage> {
 	protected client!: OpenCodeClient;
 	private readonly diagnosticLogger?: DiagnosticLogger;
 	private toolIdsLogged = false;
+	private readonly disposeResources?: () => Promise<void> | void;
 
 	constructor(
 		clientFactory: () => Promise<OpenCodeClient>,
 		private readonly config: SessionConfigBase,
+		disposeResources?: () => Promise<void> | void,
 	) {
 		this.clientFactory = clientFactory;
 		this.directory = config.directory;
@@ -397,6 +291,7 @@ class OpenCodeSessionBase implements AsyncIterable<AgentMessage> {
 		this.includePartialMessages = config.includePartialMessages;
 		this.diagnosticLogger = config.diagnosticLogger;
 		this.initialized = this.initialize();
+		this.disposeResources = disposeResources;
 	}
 
 	protected get role(): "architect" | "navigator" | "driver" {
@@ -935,6 +830,11 @@ class OpenCodeSessionBase implements AsyncIterable<AgentMessage> {
 		} finally {
 			this.queue.finish();
 			this.logDiagnostic("OPENCODE_SESSION_ENDED", {});
+			try {
+				await this.disposeResources?.();
+			} catch {
+				// Ignore cleanup failures
+			}
 		}
 	}
 
@@ -975,8 +875,9 @@ class OpenCodeStreamingSession
 	constructor(
 		clientFactory: () => Promise<OpenCodeClient>,
 		streamingConfig: StreamingSessionConfig,
+		disposeResources?: () => Promise<void> | void,
 	) {
-		super(clientFactory, streamingConfig);
+		super(clientFactory, streamingConfig, disposeResources);
 		this.inputStream = {
 			pushText: (text: string) => {
 				void this.enqueuePrompt(text);
@@ -1000,10 +901,9 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 	readonly name = "opencode";
 
 	private readonly providerConfig: OpenCodeProviderConfig;
-	private serverLease: SharedServerLease | null = null;
-	private clientPromise: Promise<OpenCodeClient> | null = null;
-	private serverConfigApplied = false;
-	private activeProjectPath?: string;
+	private readonly activeCleanups = new Set<() => Promise<void>>();
+	private externalMcpWarningLogged = false;
+	private lastResolvedDirectory?: string;
 
 	constructor(config: ProviderConfig) {
 		super(config);
@@ -1070,10 +970,17 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 	createSession(options: SessionOptions): AgentSession {
 		const sessionDirectory =
 			this.providerConfig.directory || options.projectPath || undefined;
+		const resolvedDirectory = this.resolveDirectory(sessionDirectory);
+		const resources = this.createClientResources({
+			role: "architect",
+			directory: resolvedDirectory,
+			sessionMcpServerUrl: this.normalizeMcpUrl(options.mcpServerUrl),
+		});
+		const cleanup = this.registerCleanup(resources.cleanup);
 		const config: ArchitectSessionConfig = {
 			role: "architect",
 			systemPrompt: options.systemPrompt,
-			directory: sessionDirectory,
+			directory: resolvedDirectory,
 			agentName: this.providerConfig.agents.architect,
 			model: this.providerConfig.model,
 			canUseTool: options.canUseTool as ToolGuard | undefined,
@@ -1083,8 +990,9 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 					: false,
 			diagnosticLogger: options.diagnosticLogger,
 		};
-		this.activeProjectPath = sessionDirectory;
-		return new OpenCodeArchitectSession(this.getClient.bind(this), config);
+		this.activeProjectPath = resolvedDirectory;
+		this.lastResolvedDirectory = resolvedDirectory;
+		return new OpenCodeArchitectSession(resources.getClient, config, cleanup);
 	}
 
 	createStreamingSession(
@@ -1092,10 +1000,17 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 	): StreamingAgentSession {
 		const sessionDirectory =
 			this.providerConfig.directory || options.projectPath || undefined;
+		const resolvedDirectory = this.resolveDirectory(sessionDirectory);
+		const resources = this.createClientResources({
+			role: options.mcpRole,
+			directory: resolvedDirectory,
+			sessionMcpServerUrl: this.normalizeMcpUrl(options.mcpServerUrl),
+		});
+		const cleanup = this.registerCleanup(resources.cleanup);
 		const config: StreamingSessionConfig = {
 			role: options.mcpRole,
 			systemPrompt: options.systemPrompt,
-			directory: sessionDirectory,
+			directory: resolvedDirectory,
 			agentName:
 				options.mcpRole === "driver"
 					? this.providerConfig.agents.driver
@@ -1105,19 +1020,141 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 			includePartialMessages: false,
 			diagnosticLogger: options.diagnosticLogger,
 		};
-		this.activeProjectPath = sessionDirectory;
-		return new OpenCodeStreamingSession(this.getClient.bind(this), config);
+		this.activeProjectPath = resolvedDirectory;
+		this.lastResolvedDirectory = resolvedDirectory;
+		return new OpenCodeStreamingSession(resources.getClient, config, cleanup);
 	}
 
-	private buildServerConfig(): Record<string, unknown> | undefined {
-		const base: Record<string, unknown> = this.providerConfig.server?.config
-			? (JSON.parse(
-					JSON.stringify(this.providerConfig.server.config),
-				) as Record<string, unknown>)
-			: {};
+	private normalizeMcpUrl(url?: string): string | undefined {
+		if (!url) return undefined;
+		const trimmed = url.trim();
+		return trimmed.length > 0 ? trimmed : undefined;
+	}
+
+	private resolveDirectory(directory?: string): string | undefined {
+		if (!directory) return undefined;
+		const trimmed = directory.trim();
+		if (!trimmed) return undefined;
+		if (path.isAbsolute(trimmed)) {
+			return path.normalize(trimmed);
+		}
+		return path.normalize(path.resolve(trimmed));
+	}
+
+	private registerCleanup(cleanup: () => Promise<void>): () => Promise<void> {
+		let called = false;
+		const wrapped = async (): Promise<void> => {
+			if (called) return;
+			called = true;
+			try {
+				await cleanup();
+			} finally {
+				this.activeCleanups.delete(wrapped);
+			}
+		};
+		this.activeCleanups.add(wrapped);
+		return wrapped;
+	}
+
+	private createClientResources(params: {
+		role: "architect" | "navigator" | "driver";
+		directory?: string;
+		sessionMcpServerUrl?: string;
+	}): SessionClientResources {
+		const { role, directory, sessionMcpServerUrl } = params;
+		const resolvedDirectory = this.resolveDirectory(
+			directory ?? this.providerConfig.directory ?? this.lastResolvedDirectory,
+		);
+		let clientPromise: Promise<OpenCodeClient> | null = null;
+		let serverHandle: { url: string; close(): void } | null = null;
+		let cleaned = false;
+
+		const getClient = async (): Promise<OpenCodeClient> => {
+			if (!clientPromise) {
+				clientPromise = (async () => {
+					let baseUrl = this.providerConfig.baseUrl;
+
+					if (this.providerConfig.startServer) {
+						const serverOptions: ServerOptions = {
+							hostname:
+								this.providerConfig.server?.hostname ?? DEFAULT_SERVER_HOST,
+							port: this.providerConfig.server?.port ?? DEFAULT_SERVER_PORT,
+							timeout:
+								this.providerConfig.server?.timeout ?? DEFAULT_SERVER_TIMEOUT,
+							config: this.buildServerConfigForRole({
+								role,
+								directory: resolvedDirectory,
+								sessionMcpServerUrl,
+							}),
+						};
+						try {
+							serverHandle = await createOpencodeServer(serverOptions);
+						} catch (error) {
+							throw new Error(
+								`Failed to start OpenCode server: ${error instanceof Error ? error.message : String(error)}`,
+							);
+						}
+						baseUrl = serverHandle.url;
+					} else if (!baseUrl) {
+						throw new Error(
+							"OpenCode provider requires a base URL or startServer configuration",
+						);
+					} else if (sessionMcpServerUrl && !this.externalMcpWarningLogged) {
+						console.warn(
+							"[Pair][OpenCode] Embedded MCP servers are configured automatically when startServer=true. Ensure your external OpenCode instance registers navigator and driver MCP endpoints.",
+						);
+						this.externalMcpWarningLogged = true;
+					}
+
+					return createOpencodeClient({
+						baseUrl,
+						responseStyle: "data",
+					});
+				})();
+
+				clientPromise.catch(() => {
+					clientPromise = null;
+					if (serverHandle) {
+						try {
+							serverHandle.close();
+						} catch {}
+						serverHandle = null;
+					}
+				});
+			}
+
+			return clientPromise;
+		};
+
+		const cleanup = async (): Promise<void> => {
+			if (cleaned) return;
+			cleaned = true;
+			clientPromise = null;
+			if (serverHandle) {
+				try {
+					serverHandle.close();
+				} catch {}
+				serverHandle = null;
+			}
+		};
+
+		return {
+			getClient,
+			cleanup,
+		};
+	}
+
+	private buildServerConfigForRole(params: {
+		role: "architect" | "navigator" | "driver";
+		directory?: string;
+		sessionMcpServerUrl?: string;
+	}): Record<string, unknown> | undefined {
+		const { role, directory, sessionMcpServerUrl } = params;
+		const base = this.cloneServerBaseConfig();
 		const mcpServers = this.providerConfig.mcpServers;
+		const mergedMcp = (base.mcp as Record<string, unknown> | undefined) ?? {};
+
 		if (mcpServers && Object.keys(mcpServers).length > 0) {
-			const mergedMcp = (base.mcp as Record<string, unknown> | undefined) ?? {};
 			for (const [name, server] of Object.entries(mcpServers)) {
 				const remoteConfig: Record<string, unknown> = {
 					type: "remote",
@@ -1129,6 +1166,17 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 				}
 				mergedMcp[name] = remoteConfig;
 			}
+		}
+
+		if (sessionMcpServerUrl) {
+			mergedMcp[`pair-${role}`] = {
+				type: "remote",
+				url: sessionMcpServerUrl,
+				enabled: true,
+			};
+		}
+
+		if (Object.keys(mergedMcp).length > 0) {
 			base.mcp = mergedMcp;
 			const permission =
 				(base.permission as Record<string, unknown> | undefined) ?? {};
@@ -1138,88 +1186,38 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 			if (permission.bash === undefined) {
 				permission.bash = "ask";
 			}
-			base.permission = permission;
+			if (Object.keys(permission).length > 0) {
+				base.permission = permission;
+			}
 		}
-		const workingDirectory =
-			this.providerConfig.directory || this.activeProjectPath;
-		if (
-			workingDirectory &&
-			typeof workingDirectory === "string" &&
-			workingDirectory.trim().length > 0
-		) {
-			const serverConfig = (base as Record<string, unknown>).directory;
-			if (!serverConfig) {
-				base.directory = workingDirectory;
+
+		const resolvedDirectory = this.resolveDirectory(
+			directory ?? this.providerConfig.directory ?? this.lastResolvedDirectory,
+		);
+		if (resolvedDirectory) {
+			if (!base.directory) {
+				base.directory = resolvedDirectory;
 			}
 			const pathConfig =
 				(base.path as Record<string, unknown> | undefined) ?? {};
 			if (!pathConfig.directory) {
-				pathConfig.directory = workingDirectory;
+				pathConfig.directory = resolvedDirectory;
 			}
 			if (!pathConfig.worktree) {
-				pathConfig.worktree = workingDirectory;
+				pathConfig.worktree = resolvedDirectory;
 			}
 			if (Object.keys(pathConfig).length > 0) {
 				base.path = pathConfig;
 			}
 		}
+
 		return Object.keys(base).length > 0 ? base : undefined;
 	}
 
-	private async getClient(): Promise<OpenCodeClient> {
-		if (!this.clientPromise) {
-			this.clientPromise = (async () => {
-				let baseUrl = this.providerConfig.baseUrl;
-				let lease: SharedServerLease | null = null;
-				try {
-					if (this.providerConfig.startServer) {
-						const workingDirectory =
-							this.providerConfig.directory || this.activeProjectPath;
-						const serverOptions: ServerOptions = {
-							hostname:
-								this.providerConfig.server?.hostname ?? DEFAULT_SERVER_HOST,
-							port: this.providerConfig.server?.port ?? DEFAULT_SERVER_PORT,
-							timeout:
-								this.providerConfig.server?.timeout ?? DEFAULT_SERVER_TIMEOUT,
-							config: this.buildServerConfig(),
-							workingDirectory,
-						};
-						lease = await acquireSharedServer(serverOptions);
-						this.serverLease = lease;
-						baseUrl = lease.url;
-						this.serverConfigApplied = true;
-					}
-					if (!baseUrl) {
-						throw new Error(
-							"OpenCode provider requires a base URL or startServer configuration",
-						);
-					} else if (
-						!this.providerConfig.startServer &&
-						this.providerConfig.mcpServers &&
-						!this.serverConfigApplied
-					) {
-						console.warn(
-							"[Pair][OpenCode] MCP servers configured but startServer=false. Ensure your external OpenCode instance registers the remote MCP servers.",
-						);
-						this.serverConfigApplied = true;
-					}
-					return createOpencodeClient({
-						baseUrl,
-						responseStyle: "data",
-					});
-				} catch (error) {
-					if (lease) {
-						lease.release();
-					}
-					this.serverLease = null;
-					throw error;
-				}
-			})();
-			this.clientPromise.catch(() => {
-				this.clientPromise = null;
-			});
-		}
-		return this.clientPromise;
+	private cloneServerBaseConfig(): Record<string, unknown> {
+		const config = this.providerConfig.server?.config;
+		if (!config) return {};
+		return JSON.parse(JSON.stringify(config)) as Record<string, unknown>;
 	}
 
 	getPlanningConfig(task: string): {
@@ -1251,10 +1249,12 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 
 	async cleanup(): Promise<void> {
 		await super.cleanup();
-		if (this.serverLease) {
-			this.serverLease.release();
-			this.serverLease = null;
+		const pending = Array.from(this.activeCleanups);
+		this.activeCleanups.clear();
+		for (const cleanup of pending) {
+			try {
+				await cleanup();
+			} catch {}
 		}
-		this.clientPromise = null;
 	}
 }

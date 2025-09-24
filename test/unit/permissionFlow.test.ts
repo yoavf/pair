@@ -252,7 +252,8 @@ describe("Navigator Command Parsing", () => {
 		);
 	});
 
-	it("should parse approval commands correctly", () => {
+	it("should parse approval commands correctly during permission flow", () => {
+		(navigator as any).inPermissionApproval = true;
 		const command = (navigator as any).convertMcpToolToCommand(
 			"mcp__navigator__navigatorApprove",
 			{ comment: "LGTM" }
@@ -264,7 +265,22 @@ describe("Navigator Command Parsing", () => {
 		});
 	});
 
-	it("should parse denial commands correctly", () => {
+	it("should map approval to code review outside permission flow", () => {
+		(navigator as any).inPermissionApproval = false;
+		const command = (navigator as any).convertMcpToolToCommand(
+			"mcp__navigator__navigatorApprove",
+			{ comment: "LGTM" }
+		);
+
+		expect(command).toEqual({
+			type: "code_review",
+			pass: true,
+			comment: "LGTM",
+		});
+	});
+
+	it("should parse denial commands correctly during permission flow", () => {
+		(navigator as any).inPermissionApproval = true;
 		const command = (navigator as any).convertMcpToolToCommand(
 			"mcp__navigator__navigatorDeny",
 			{ comment: "Needs more testing" }
@@ -272,6 +288,20 @@ describe("Navigator Command Parsing", () => {
 
 		expect(command).toEqual({
 			type: "deny",
+			comment: "Needs more testing",
+		});
+	});
+
+	it("should map denial to failed code review outside permission flow", () => {
+		(navigator as any).inPermissionApproval = false;
+		const command = (navigator as any).convertMcpToolToCommand(
+			"mcp__navigator__navigatorDeny",
+			{ comment: "Needs more testing" }
+		);
+
+		expect(command).toEqual({
+			type: "code_review",
+			pass: false,
 			comment: "Needs more testing",
 		});
 	});

@@ -509,20 +509,14 @@ export class Navigator extends EventEmitter {
 								}
 							}
 						}
-						if (this.pendingTools.size === 0) this.resolvePendingToolWaiters();
+						if (this.pendingTools.size === 0) {
+							this.resolvePendingToolWaiters();
+							this.deliverPendingCommandsIfReady();
+						}
 					}
 				} else if (message.type === "result") {
-					// Regular command processing - use MCP commands
-					const cmds =
-						this.pendingCommands.length > 0 ? this.pendingCommands : [];
-					this.pendingCommands = [];
-					this.toolResults.clear();
-					// Review-only mode: no stray text synthesis
-					const resolver = this.batchResolvers.shift();
-					if (resolver) resolver(cmds);
-					this.logger.logEvent("NAVIGATOR_BATCH_RESULT", {
-						commandCount: cmds.length,
-					});
+					// Some providers emit a "result" sentinel when a batch is complete
+					this.deliverPendingCommandsIfReady(true);
 				}
 			}
 		} catch (err) {
@@ -536,6 +530,24 @@ export class Navigator extends EventEmitter {
 		return new Promise((resolve) => {
 			this.batchResolvers.push(resolve);
 		});
+	}
+
+	private deliverPendingCommandsIfReady(force = false): void {
+		if (this.pendingTools.size > 0) return;
+		if (this.pendingCommands.length === 0 && !force) return;
+		const resolver = this.batchResolvers.shift();
+		if (!resolver) return;
+		const commands =
+			this.pendingCommands.length > 0 ? this.pendingCommands : [];
+		this.pendingCommands = [];
+		this.toolResults.clear();
+		try {
+			resolver(commands);
+		} finally {
+			this.logger.logEvent("NAVIGATOR_BATCH_RESULT", {
+				commandCount: commands.length,
+			});
+		}
 	}
 
 	private resolvePendingToolWaiters() {
@@ -595,9 +607,23 @@ export class Navigator extends EventEmitter {
 			case "mcp__navigator__navigatorComplete":
 				return { type: "complete", summary: input.summary };
 			case "mcp__navigator__navigatorApprove":
-				return { type: "approve", comment: input.comment };
+				if (this.inPermissionApproval) {
+					return { type: "approve", comment: input.comment };
+				}
+				return {
+					type: "code_review",
+					pass: true,
+					comment: input.comment ?? "Navigator approved the implementation.",
+				};
 			case "mcp__navigator__navigatorDeny":
-				return { type: "deny", comment: input.comment };
+				if (this.inPermissionApproval) {
+					return { type: "deny", comment: input.comment };
+				}
+				return {
+					type: "code_review",
+					pass: false,
+					comment: input.comment ?? "Navigator flagged issues during review.",
+				};
 			default:
 				return null;
 		}
