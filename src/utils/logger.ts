@@ -15,7 +15,7 @@ export class Logger {
 	private logLevel: LogLevel | null;
 	private mirrorToConsole = false;
 
-	constructor(filename: string = "claude-pair-debug.log") {
+	constructor(filename: string = "pair-debug.log") {
 		// Parse LOG_LEVEL environment variable
 		const envLevel = process.env.LOG_LEVEL?.toLowerCase();
 		this.logLevel = ["error", "warn", "info", "debug"].includes(envLevel || "")
@@ -28,7 +28,7 @@ export class Logger {
 			if (configuredPath) {
 				// If LOG_FILE is absolute, use as-is; otherwise, place within default logs dir
 				const isAbsolute = path.isAbsolute(configuredPath);
-				const defaultDir = path.join(os.homedir(), ".claude-pair", "logs");
+				const defaultDir = path.join(os.homedir(), ".pair", "logs");
 				if (!fs.existsSync(defaultDir))
 					fs.mkdirSync(defaultDir, { recursive: true });
 				this.logFile = isAbsolute
@@ -38,7 +38,7 @@ export class Logger {
 				if (!fs.existsSync(parentDir))
 					fs.mkdirSync(parentDir, { recursive: true });
 			} else {
-				const logsDir = path.join(os.homedir(), ".claude-pair", "logs");
+				const logsDir = path.join(os.homedir(), ".pair", "logs");
 				if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
 				this.logFile = path.join(logsDir, filename);
 			}

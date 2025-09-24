@@ -1,6 +1,6 @@
-# Pair Claude Repository Guidelines
+# Pair Repository Guidelines
 
-Pair is a CLI utility to run two Claude instances in pair programming mode.
+Pair is a CLI utility to run coding agents in pair programming mode.
 
 ## Project Structure & Module Organization
 - `src/` TypeScript sources (ES modules):
@@ -51,7 +51,7 @@ Pair is a CLI utility to run two Claude instances in pair programming mode.
 - Commits: imperative present tense (e.g., "add code review"). Conventional Commits are welcome (`feat:`, `fix:`, etc.).
 - PRs: include purpose, linked issues, runnable example command, and screenshots/GIFs of terminal UI when relevant.
 - Keep changes focused; update docs when behavior or flags change.
-- Do not commit secrets; this CLI uses Anthropic credentials. Avoid committing large logs—`Logger` writes to `claude-pair-debug.log`.
+- Do not commit secrets; this CLI uses Anthropic credentials. Avoid committing large logs—`Logger` writes to `pair-debug.log`.
 
 ## Security & Configuration Tips
 - Configure environment via `src/config.ts` and documented env vars in `README.md`.
@@ -69,4 +69,4 @@ Pair is a CLI utility to run two Claude instances in pair programming mode.
   - `--navigator <provider>` and `--navigator-model <model>`
   - `--driver <provider>` and `--driver-model <model>`
 - Available providers: `claude-code` (default), `opencode`
-- OpenCode requires explicit model: `--architect opencode --architect-model openrouter/google/gemini-2.0-flash`
+- OpenCode requires explicit model: `--architect opencode --architect-model openrouter/google/gemini-2.5-flash`

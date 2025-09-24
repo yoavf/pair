@@ -19,7 +19,7 @@ The Navigator stays otherwise silent; the Driver makes actual changes and progre
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd pair-claude
+cd pair
 
 # Install dependencies
 npm install
@@ -48,7 +48,7 @@ pair -f tasks/feature-request.md
 
 # Use specific providers and models
 pair -p "Add tests" --architect claude-code --architect-model opus-4.1
-pair -p "Refactor" --navigator opencode --navigator-model openrouter/google/gemini-2.0-flash
+pair -p "Refactor" --navigator opencode --navigator-model openrouter/google/gemini-2.5-flash
 ```
 
 #### Available Options
@@ -95,12 +95,12 @@ Each role (architect, navigator, driver) can use different providers and models:
 - `opencode` - Uses OpenCode SDK
 
 #### Claude Code Models
-- Default: `claude-opus-4.1-20250805` for architect, Sonnet for navigator/driver
+- Default: `claude-opus-4.1` for architect, Sonnet for navigator/driver
 - Can specify: `opus-4.1`, `sonnet`, etc.
 
 #### OpenCode Models
 - **Required**: Must specify model in format `provider/model`
-- Examples: `openrouter/google/gemini-2.0-flash`, `openai/gpt-4`, `anthropic/claude-3-opus`
+- Examples: `openrouter/google/gemini-2.5-flash`, `openai/gpt-4`, `anthropic/claude-opus-4.1`
 
 #### Configuration Examples
 
@@ -110,15 +110,15 @@ pair -p "Add feature"
 
 # Mixed providers
 pair -p "Add tests" \
-  --architect opencode --architect-model openrouter/google/gemini-2.0-flash \
+  --architect opencode --architect-model openrouter/google/gemini-2.5-flash \
   --navigator claude-code --navigator-model opus-4.1 \
   --driver claude-code
 
 # All OpenCode
 pair -p "Refactor" \
   --architect opencode --architect-model openai/gpt-4 \
-  --navigator opencode --navigator-model openrouter/anthropic/claude-3-opus \
-  --driver opencode --driver-model openrouter/google/gemini-2.0-flash
+  --navigator opencode --navigator-model openrouter/anthropic/claude-opus-4.1 \
+  --driver opencode --driver-model openrouter/google/gemini-2.5-flash
 ```
 
 #### OpenCode Configuration
@@ -137,7 +137,7 @@ When using OpenCode, configure the server with:
 CLAUDE_PAIR_DRIVER_PROVIDER=opencode pair -p "Fix tests"
 
 # New way (recommended)
-pair -p "Fix tests" --driver opencode --driver-model openrouter/google/gemini-2.0-flash
+pair -p "Fix tests" --driver opencode --driver-model openrouter/google/gemini-2.5-flash
 ```
 
 When `opencode` is on your PATH, the provider will automatically launch a local server (`opencode serve`) on `127.0.0.1:4096`. Override the hostname/port with `OPENCODE_HOSTNAME`, `OPENCODE_PORT`, or turn it off entirely with `OPENCODE_START_SERVER=false` and point `OPENCODE_BASE_URL` to a running instance.
@@ -146,7 +146,7 @@ When `opencode` is on your PATH, the provider will automatically launch a local 
 - `LOG_LEVEL`: Enable file logging (default: disabled)
   - `debug`: Enable detailed session logging
 
-When enabled, logs are written to `~/.claude-pair/logs/claude-pair-debug.log`
+When enabled, logs are written to `~/.pair/logs/pair-debug.log`
 
 Example:
 ```bash
@@ -173,7 +173,7 @@ CLAUDE_PAIR_NAVIGATOR_MAX_TURNS=30 CLAUDE_PAIR_DRIVER_MAX_TURNS=10 \
 # Use specific models for different roles
 pair --path ~/project -p "Complex architectural task" \
   --architect claude-code --architect-model opus-4.1 \
-  --navigator opencode --navigator-model openrouter/anthropic/claude-3-opus
+  --navigator opencode --navigator-model openrouter/anthropic/claude-opus-4.1
 
 ```
 

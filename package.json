@@ -1,7 +1,7 @@
 {
 	"name": "@yoavf/pair",
 	"version": "0.1.1",
-	"description": "Pair is a CLI utility to run two Claude instances in pair programming mode",
+	"description": "Pair is a CLI utility that orchestrates coding agents in pair programming mode",
 	"type": "module",
 	"main": "dist/index.js",
 	"scripts": {

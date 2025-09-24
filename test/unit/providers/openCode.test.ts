@@ -120,7 +120,7 @@ describe('OpenCodeProvider', () => {
   it('starts a dedicated server for driver sessions with project working directory', async () => {
     process.env.OPENCODE_START_SERVER = 'true';
 
-    const provider = new OpenCodeProvider({ type: 'opencode', model: 'openrouter/google/gemini-2.0-flash' });
+    const provider = new OpenCodeProvider({ type: 'opencode', model: 'openrouter/google/gemini-2.5-flash' });
     const session = provider.createStreamingSession(
       buildStreamingOptions({
         projectPath: '/repo/driver',
@@ -152,7 +152,7 @@ describe('OpenCodeProvider', () => {
   it('starts separate servers for navigator and driver roles with distinct MCP configs', async () => {
     process.env.OPENCODE_START_SERVER = 'true';
 
-    const provider = new OpenCodeProvider({ type: 'opencode', model: 'openrouter/google/gemini-2.0-flash' });
+    const provider = new OpenCodeProvider({ type: 'opencode', model: 'openrouter/google/gemini-2.5-flash' });
     const driverSession = provider.createStreamingSession(
       buildStreamingOptions({
         projectPath: '/repo/driver',
@@ -193,7 +193,7 @@ describe('OpenCodeProvider', () => {
     process.env.OPENCODE_BASE_URL = 'http://external-opencode';
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const provider = new OpenCodeProvider({ type: 'opencode', model: 'openrouter/google/gemini-2.0-flash' });
+    const provider = new OpenCodeProvider({ type: 'opencode', model: 'openrouter/google/gemini-2.5-flash' });
     const session = provider.createStreamingSession(
       buildStreamingOptions({
         projectPath: '/repo/external',

@@ -137,7 +137,7 @@ export function validateConfig(
 			// Validate OpenCode requires model
 			if (modelConfig.provider === "opencode" && !modelConfig.model) {
 				throw new Error(
-					`OpenCode provider requires a model. Please specify --${name}-model with format like 'openrouter/google/gemini-2.0-flash'`,
+					`OpenCode provider requires a model. Please specify --${name}-model with format like 'openrouter/google/gemini-2.5-flash'`,
 				);
 			}
 		}

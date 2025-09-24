@@ -7,7 +7,7 @@ describe('OpenCodeProvider Configuration', () => {
     it('should accept valid model configuration', () => {
       const config: ProviderConfig = {
         type: 'opencode',
-        model: 'openrouter/google/gemini-2.0-flash',
+        model: 'openrouter/google/gemini-2.5-flash',
       };
 
       expect(() => new OpenCodeProvider(config)).not.toThrow();
@@ -26,7 +26,7 @@ describe('OpenCodeProvider Configuration', () => {
     it('should throw error when model format is invalid (no slash)', () => {
       const config: ProviderConfig = {
         type: 'opencode',
-        model: 'gemini-2.0-flash',
+        model: 'gemini-2.5-flash',
       };
 
       expect(() => new OpenCodeProvider(config)).toThrow(
@@ -47,7 +47,7 @@ describe('OpenCodeProvider Configuration', () => {
     it('should parse OpenCode-specific format correctly', () => {
       const config: ProviderConfig = {
         type: 'opencode',
-        model: 'openrouter/anthropic/claude-3-opus-20240229',
+        model: 'openrouter/anthropic/claude-opus-4.1',
       };
 
       expect(() => new OpenCodeProvider(config)).not.toThrow();

@@ -171,7 +171,7 @@ class ClaudePairApp {
 		this.config.projectPath = normalizedProjectPath;
 		this.config.initialTask = task;
 
-		this.logger = new Logger("claude-pair-debug.log");
+		this.logger = new Logger("pair-debug.log");
 		const logPath = this.logger.getFilePath();
 		this.logger.logEvent("APP_LOGGING_CONFIG", {
 			level: process.env.LOG_LEVEL || "(disabled)",
@@ -873,7 +873,7 @@ function showHelp(): void {
 		"  # Mix providers: OpenCode for architect, Claude Code for others",
 	);
 	console.log(
-		'  pair -p "Add tests" --architect opencode --architect-model openrouter/google/gemini-2.0-flash',
+		'  pair -p "Add tests" --architect opencode --architect-model openrouter/google/gemini-2.5-flash',
 	);
 }
 

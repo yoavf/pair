@@ -67,7 +67,7 @@ describe('validateConfig', () => {
   it('should accept OpenCode provider with model', () => {
     const validConfig = {
       ...baseConfig,
-      navigatorConfig: { provider: 'opencode', model: 'openrouter/gemini-2.0-flash' },
+      navigatorConfig: { provider: 'opencode', model: 'openrouter/gemini-2.5-flash' },
     };
     expect(() => validateConfig(validConfig, ['claude-code', 'opencode'])).not.toThrow();
   });

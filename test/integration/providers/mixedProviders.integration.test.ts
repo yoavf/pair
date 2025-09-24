@@ -15,7 +15,7 @@ describe('Provider Integration', () => {
 
 		const openCodeProvider = agentProviderFactory.createProvider({
 			type: 'opencode',
-			model: 'openrouter/google/gemini-2.0-flash'
+			model: 'openrouter/google/gemini-2.5-flash'
 		});
 
 		expect(claudeProvider.name).toBe('claude-code');
@@ -33,7 +33,7 @@ describe('Provider Integration', () => {
 			sessionHardLimitMs: 30 * 60 * 1000,
 			enableSyncStatus: true,
 			architectConfig: { provider: 'claude-code', model: undefined },
-			navigatorConfig: { provider: 'opencode', model: 'openrouter/google/gemini-2.0-flash' },
+			navigatorConfig: { provider: 'opencode', model: 'openrouter/google/gemini-2.5-flash' },
 			driverConfig: { provider: 'claude-code', model: undefined },
 		};
 
