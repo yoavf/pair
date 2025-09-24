@@ -6,7 +6,7 @@ Pair is a CLI utility that orchestrates coding agents working together in a pair
 
 This tool creates a collaborative coding session with two agent instances working together.
 
-- The session starts with a **Planning** phase where a plan is formulated by the Navigator.
+- The session starts with a **Planning** phase where a plan is formulated by the Architect.
 - The plan is then passed to the Driver for **implementation**.
 - The Navigator acts in two moments only:
   - Approving/denying file modifications when the Driver requests an edit (Approve / Deny).
@@ -172,8 +172,8 @@ CLAUDE_PAIR_NAVIGATOR_MAX_TURNS=30 CLAUDE_PAIR_DRIVER_MAX_TURNS=10 \
 
 # Use specific models for different roles
 pair --path ~/project -p "Complex architectural task" \
-  --architect claude-code --architect-model opus-4.1 \
-  --navigator opencode --navigator-model openrouter/anthropic/claude-opus-4.1
+  --architect claude-code --architect-model claude-opus-4-1-20250805 \
+  --navigator opencode --navigator-model openrouter/google/gemini-2.5-flash
 
 ```
 
@@ -191,12 +191,27 @@ When you start the application:
 
 ```
 src/
-├── index.ts                    # Main orchestrator
+├── index.ts                    # Main entry point
+├── app.ts                      # Application orchestration
 ├── conversations/              # Agent implementations
-├── components/                 # UI components
+│   ├── Architect.ts            # Planning agent
+│   ├── Driver.ts               # Implementation agent
+│   ├── Navigator.ts            # Review agent
+│   └── navigator/              # Navigator utilities
+├── providers/                  # Provider implementations
+│   ├── embedded/               # In-process providers
+│   │   ├── claudeCode.ts       # Claude Code provider
+│   │   ├── opencode.ts         # OpenCode provider
+│   │   └── opencode/           # OpenCode modules
+│   └── factory.ts              # Provider factory
 ├── utils/                      # Helper functions
-├── config.ts                   # Configuration
-└── types.ts                    # Type definitions
+│   ├── cli.ts                  # CLI argument parsing
+│   ├── config.ts               # Configuration management
+│   ├── implementationLoop.ts   # Core implementation logic
+│   └── ...                     # Other utilities
+├── components/                 # UI components
+├── display.tsx                 # Display management
+└── types/                      # Type definitions
 ```
 
 ## Requirements
