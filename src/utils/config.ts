@@ -44,7 +44,7 @@ export const DEFAULT_CONFIG: AppConfig = {
 	enableSyncStatus: true, // Enable by default
 	architectProvider: "claude-code",
 	navigatorProvider: "opencode",
-	driverProvider: "claude-code",
+	driverProvider: "opencode",
 };
 
 /**

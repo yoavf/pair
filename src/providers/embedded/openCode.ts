@@ -264,6 +264,10 @@ class OpenCodeSessionBase implements AsyncIterable<AgentMessage> {
 	protected readonly messageBuffers = new Map<string, string>();
 	protected readonly messagePartIds = new Map<string, Set<string>>();
 	protected readonly emittedMessages = new Set<string>();
+	// Track Navigator approval tool emissions to prevent duplicates
+	private readonly navigatorApprovalKeys = new Set<string>();
+	// Track active permission requests to ensure one approval per request
+	private currentPermissionRequestId: string | null = null;
 
 	private readonly promptQueue: string[] = [];
 	private processing = false;
@@ -296,6 +300,14 @@ class OpenCodeSessionBase implements AsyncIterable<AgentMessage> {
 
 	protected get role(): "architect" | "navigator" | "driver" {
 		return this.config.role;
+	}
+
+	private isNavigatorDecisionTool(toolName: string): boolean {
+		return (
+			toolName.includes("navigatorApprove") ||
+			toolName.includes("navigatorDeny") ||
+			toolName.includes("navigatorCodeReview")
+		);
 	}
 
 	protected logDiagnostic(
@@ -622,6 +634,54 @@ class OpenCodeSessionBase implements AsyncIterable<AgentMessage> {
 			case "running": {
 				if (previous === "running") return;
 				this.toolStates.set(part.id, "running");
+
+				// For Navigator role, enforce strict tool usage rules
+				if (this.role === "navigator") {
+					if (
+						this.currentPermissionRequestId &&
+						this.isNavigatorDecisionTool(mappedName)
+					) {
+						// Block invalid tools during permission requests
+						if (
+							mappedName.includes("navigatorComplete") ||
+							mappedName.includes("navigatorCodeReview")
+						) {
+							this.logDiagnostic("OPENCODE_NAVIGATOR_INVALID_TOOL_BLOCKED", {
+								tool: mappedName,
+								permissionId: this.currentPermissionRequestId,
+								reason:
+									"Complete/CodeReview not allowed during permission requests",
+							});
+							return;
+						}
+
+						// Allow only ONE decision tool per permission request (regardless of content)
+						const permissionKey = this.currentPermissionRequestId;
+						if (this.navigatorApprovalKeys.has(permissionKey)) {
+							this.logDiagnostic(
+								"OPENCODE_NAVIGATOR_DUPLICATE_DECISION_BLOCKED",
+								{
+									tool: mappedName,
+									permissionId: this.currentPermissionRequestId,
+									reason: "Permission already has a decision",
+								},
+							);
+							return;
+						}
+
+						// Mark this permission as having a decision
+						this.navigatorApprovalKeys.add(permissionKey);
+
+						if (this.navigatorApprovalKeys.size > 50) {
+							const keysArray = Array.from(this.navigatorApprovalKeys);
+							this.navigatorApprovalKeys.clear();
+							for (const key of keysArray.slice(-25)) {
+								this.navigatorApprovalKeys.add(key);
+							}
+						}
+					}
+				}
+
 				this.queue.push({
 					type: "assistant",
 					session_id: this.sessionId ?? undefined,
@@ -688,6 +748,11 @@ class OpenCodeSessionBase implements AsyncIterable<AgentMessage> {
 	): Promise<void> {
 		const info = event.properties;
 		if (info.sessionID !== this.sessionId) return;
+
+		if (this.role === "navigator") {
+			this.currentPermissionRequestId = info.id;
+		}
+
 		this.logDiagnostic("OPENCODE_PERMISSION_REQUEST", {
 			permissionId: info.id,
 			toolType: info.type,
@@ -727,10 +792,18 @@ class OpenCodeSessionBase implements AsyncIterable<AgentMessage> {
 
 		if (decision.behavior === "allow") {
 			await this.respondToPermission(info, "once");
+			// Clear permission request ID after responding
+			if (this.role === "navigator") {
+				this.currentPermissionRequestId = null;
+			}
 			return;
 		}
 
 		await this.respondToPermission(info, "reject");
+		// Clear permission request ID after responding
+		if (this.role === "navigator") {
+			this.currentPermissionRequestId = null;
+		}
 		this.queue.push({
 			type: "system",
 			session_id: this.sessionId ?? undefined,

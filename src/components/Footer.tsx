@@ -38,13 +38,9 @@ const Footer: React.FC<Props> = ({
 	const horizontalLine = "─".repeat(terminalWidth);
 
 	const segments: string[] = [];
-	if (phase) {
-		segments.push(`${phase[0].toUpperCase()}${phase.slice(1)}`);
-	}
 	if (activity) {
 		segments.push(activity);
-	}
-	if (providers) {
+	} else if (providers) {
 		if (phase === "planning") {
 			segments.push(`Architect: ${providers.architect}`);
 		} else if (phase === "execution" || phase === "review") {

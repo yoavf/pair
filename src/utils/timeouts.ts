@@ -5,7 +5,7 @@
 // Configurable timeout values (in milliseconds)
 export const TIMEOUT_CONFIG = {
 	TOOL_COMPLETION: Number(process.env.PAIR_TOOL_TIMEOUT_MS) || 120000, // 2 minutes
-	PERMISSION_REQUEST: Number(process.env.PAIR_PERMISSION_TIMEOUT_MS) || 15000, // 15 seconds
+	PERMISSION_REQUEST: Number(process.env.PAIR_PERMISSION_TIMEOUT_MS) || 45000, // 45 seconds
 } as const;
 
 /**

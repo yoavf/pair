@@ -136,13 +136,52 @@ describe("Permission Flow", () => {
 	});
 
 	describe("Code Review", () => {
+		it("should not initiate code review without explicit request", async () => {
+			// Setup scenario: Navigator just acknowledges continuation
+			mockSdk.setupScenario({
+				name: "navigator-acknowledge",
+				messages: [
+					MockMessageHelpers.assistantText("I understand you're continuing with implementation. I'll monitor your progress."),
+					MockMessageHelpers.result(),
+				],
+			});
+			mockSdk.useScenario("navigator-acknowledge");
+
+			// Call processDriverMessage with isReviewRequested=false
+			const commands = await navigator.processDriverMessage(
+				"I'm continuing to implement the authentication module.",
+				false  // No review requested
+			);
+
+			// Navigator should not return any review commands
+			expect(commands).toBeNull();
+		});
+
+		it("should initiate code review when explicitly requested", async () => {
+			// Setup scenario: Navigator performs code review
+			mockSdk.setupScenario(CommonScenarios.navigatorCodeReviewPass());
+			mockSdk.useScenario("navigator-review-pass");
+
+			// Call processDriverMessage with isReviewRequested=true
+			const commands = await navigator.processDriverMessage(
+				"I have completed the authentication module. Please review my implementation.",
+				true  // Review explicitly requested
+			);
+
+			expect(commands).toHaveLength(1);
+			expect(commands![0].type).toBe("code_review");
+			expect(commands![0].pass).toBe(true);
+			expect(commands![0].comment).toBe("Implementation looks complete and correct");
+		});
+
 		it("should handle passing code review", async () => {
 			// Setup scenario: Navigator approves the review
 			mockSdk.setupScenario(CommonScenarios.navigatorCodeReviewPass());
 			mockSdk.useScenario("navigator-review-pass");
 
 			const commands = await navigator.processDriverMessage(
-				"I have implemented user authentication with login/logout functionality. Please review."
+				"I have implemented user authentication with login/logout functionality. Please review.",
+				true  // Review requested
 			);
 
 			expect(commands).toHaveLength(1);
@@ -157,7 +196,8 @@ describe("Permission Flow", () => {
 			mockSdk.useScenario("navigator-review-fail");
 
 			const commands = await navigator.processDriverMessage(
-				"I have implemented user authentication. Please review."
+				"I have implemented user authentication. Please review.",
+				true  // Review requested
 			);
 
 			expect(commands).toHaveLength(1);
@@ -172,7 +212,8 @@ describe("Permission Flow", () => {
 			mockSdk.useScenario("navigator-complete");
 
 			const commands = await navigator.processDriverMessage(
-				"All features implemented and tested. Task should be complete."
+				"All features implemented and tested. Task should be complete.",
+				true  // Review requested for completion
 			);
 
 			expect(commands).toHaveLength(1);

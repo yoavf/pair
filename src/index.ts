@@ -472,8 +472,10 @@ class ClaudePairApp {
 						},
 					);
 					// biome-ignore lint/suspicious/noExplicitAny: Navigator command response type from Claude Code SDK
-					const _navResp: any =
-						await this.navigator.processDriverMessage(messageForNavigator);
+					const _navResp: any = await this.navigator.processDriverMessage(
+						messageForNavigator,
+						true,
+					); // true = review was requested
 					// biome-ignore lint/suspicious/noExplicitAny: Navigator command array type from Claude Code SDK
 					const navCommands: any[] = Array.isArray(_navResp)
 						? _navResp
@@ -541,8 +543,10 @@ class ClaudePairApp {
 						while (attempts < 5) {
 							attempts++;
 							const retryPrompt = `${messageForNavigator}\n\nSTRICT: Respond with exactly one MCP tool call: mcp__navigator__navigatorCodeReview OR mcp__navigator__navigatorComplete. No other text.`;
-							const retryResp =
-								await this.navigator.processDriverMessage(retryPrompt);
+							const retryResp = await this.navigator.processDriverMessage(
+								retryPrompt,
+								true,
+							); // true = still reviewing
 							const cmds: NavigatorCommand[] = Array.isArray(retryResp)
 								? retryResp
 								: retryResp
@@ -636,9 +640,11 @@ class ClaudePairApp {
 							messageLength: combinedMessage.length,
 						},
 					);
-					// Process guidance request with navigator
-					const _navResp: any =
-						await this.navigator.processDriverMessage(combinedMessage);
+					// Process guidance request with navigator (not a review)
+					const _navResp: any = await this.navigator.processDriverMessage(
+						combinedMessage,
+						false,
+					);
 					const navCommands: any[] = Array.isArray(_navResp)
 						? _navResp
 						: _navResp

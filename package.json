@@ -11,7 +11,7 @@
 		"watch": "tsc --watch",
 		"lint": "biome lint src/",
 		"format": "biome format --write src/",
-		"check": "biome check --write src/",
+		"check": "biome check --write src/ --max-diagnostics 100",
 		"prepare": "husky",
 		"test": "vitest run",
 		"test:watch": "vitest",
