@@ -22,19 +22,14 @@ import type {
 	EmbeddedAgentProvider,
 	ProviderConfig,
 } from "./providers/types.js";
-import { isFileModificationTool } from "./types/core.js";
-import {
-	NavigatorSessionError,
-	PermissionDeniedError,
-	PermissionMalformedError,
-	PermissionTimeoutError,
-} from "./types/errors.js";
-import type { PermissionRequest } from "./types/permission.js";
-import type { NavigatorCommand } from "./types.js";
-import { displayBanner } from "./utils/banner.js";
 import type { AppConfig } from "./utils/config.js";
+import { EventHandlersManager } from "./utils/eventHandlers.js";
+import {
+	ImplementationLoop,
+	type ImplementationLoopConfig,
+} from "./utils/implementationLoop.js";
 import { Logger } from "./utils/logger.js";
-import { TIMEOUT_CONFIG, TimeoutManager } from "./utils/timeouts.js";
+import { PermissionHandler } from "./utils/permissionHandler.js";
 
 /**
  * Resolve project path with home directory expansion
@@ -62,87 +57,12 @@ export class PairApp {
 	private config = DEFAULT_PAIR_CONFIG;
 	private stopping = false;
 	private appConfig!: AppConfig;
-	private sessionTimer?: NodeJS.Timeout;
 	private mcp?: PairMcpServer;
-	private driverBuffer: string[] = [];
 	private projectPath!: string;
 	private providers: AgentProvider[] = [];
-
-	private async requestPermissionWithTimeout(
-		request: PermissionRequest,
-		timeoutMs = TIMEOUT_CONFIG.PERMISSION_REQUEST,
-	) {
-		const { controller, cleanup } = TimeoutManager.createTimeout(timeoutMs);
-
-		try {
-			const result = await this.navigator.reviewPermission(request, {
-				signal: controller.signal,
-			});
-			cleanup();
-			return result;
-		} catch (error) {
-			cleanup();
-
-			if (error instanceof PermissionDeniedError) {
-				return {
-					allowed: false as const,
-					reason: error.reason,
-				};
-			}
-
-			if (error instanceof PermissionTimeoutError) {
-				this.logger.logEvent("PERMISSION_TIMEOUT", {
-					toolName: request.toolName,
-					timeoutMs,
-				});
-				return {
-					allowed: false as const,
-					reason: "Permission request timed out",
-				};
-			}
-
-			if (error instanceof PermissionMalformedError) {
-				this.logger.logEvent("PERMISSION_MALFORMED", {
-					toolName: request.toolName,
-					error: error.message,
-				});
-				return {
-					allowed: false as const,
-					reason: "Navigator provided invalid response",
-				};
-			}
-
-			if (error instanceof NavigatorSessionError) {
-				this.logger.logEvent("PERMISSION_SESSION_ERROR", {
-					toolName: request.toolName,
-					error: error.message,
-				});
-				return {
-					allowed: false as const,
-					reason: "Navigator session error",
-				};
-			}
-
-			if (controller.signal.aborted) {
-				this.logger.logEvent("PERMISSION_ABORTED", {
-					toolName: request.toolName,
-				});
-				return {
-					allowed: false as const,
-					reason: "Permission request was cancelled",
-				};
-			}
-
-			this.logger.logEvent("PERMISSION_UNKNOWN_ERROR", {
-				toolName: request.toolName,
-				error: error instanceof Error ? error.message : String(error),
-			});
-			return {
-				allowed: false as const,
-				reason: "Unknown error occurred",
-			};
-		}
-	}
+	private implementationLoop!: ImplementationLoop;
+	private permissionHandler!: PermissionHandler;
+	private eventHandlers!: EventHandlersManager;
 
 	constructor(
 		projectPath: string,
@@ -247,63 +167,24 @@ export class PairApp {
 			navUrl,
 		);
 
-		// Permission broker: canUseTool handler wired to Navigator
-		const canUseTool = async (
-			toolName: string,
-			input: Record<string, unknown>,
-			_options?: { suggestions?: Record<string, unknown> },
-		): Promise<
-			| {
-					behavior: "allow";
-					updatedInput: Record<string, unknown>;
-					updatedPermissions?: Record<string, unknown>;
-			  }
-			| { behavior: "deny"; message: string }
-		> => {
-			const needsApproval = isFileModificationTool(toolName);
+		// Initialize permission handler
+		this.permissionHandler = new PermissionHandler(
+			this.navigator,
+			this.display,
+			this.logger,
+		);
 
-			if (!needsApproval) {
-				return { behavior: "allow", updatedInput: input };
-			}
-			// Flush buffered driver transcript
-			const transcript = this.driverBuffer.join("\n").trim();
-			this.driverBuffer = [];
-			// Display transfer to navigator for permission
-			this.display?.showTransfer("driver", "navigator", "Permission request");
-			this.display?.updateStatus(`Awaiting navigator approval: ${toolName}`);
-			this.logger.logEvent("PERMISSION_REQUEST_SENT", {
-				toolName,
-				inputKeys: Object.keys(input || {}),
-				transcriptPreview: transcript.slice(0, 200),
-			});
-
-			const result = await this.requestPermissionWithTimeout({
-				driverTranscript: transcript,
-				toolName,
-				input,
-			});
-
-			this.display?.showTransfer("navigator", "driver", "Decision");
-			this.display?.updateStatus(
-				result.allowed ? `Approved: ${toolName}` : `Denied: ${toolName}`,
-			);
-			this.logger.logEvent("PERMISSION_DECISION", {
-				toolName,
-				allowed: result.allowed,
-			});
-
-			if (!result.allowed) {
-				return {
-					behavior: "deny",
-					message: result.reason,
-				};
-			}
-
-			return {
-				behavior: "allow",
-				updatedInput: result.updatedInput,
-			};
+		// Create a buffer for driver transcript that can be accessed by permission handler
+		let driverBuffer: string[] = [];
+		const getDriverTranscript = () => {
+			const transcript = driverBuffer.join("\n").trim();
+			driverBuffer = [];
+			return transcript;
 		};
+
+		// Permission broker: canUseTool handler wired to Navigator
+		const canUseTool =
+			this.permissionHandler.createCanUseToolHandler(getDriverTranscript);
 
 		this.driver = new Driver(
 			DRIVER_PROMPT,
@@ -316,7 +197,33 @@ export class PairApp {
 			drvUrl,
 		);
 
-		this.setupEventHandlers();
+		// Initialize implementation loop after driver is created
+		const loopConfig: ImplementationLoopConfig = {
+			sessionHardLimitMs: this.appConfig.sessionHardLimitMs,
+			driverMaxTurns: this.appConfig.driverMaxTurns,
+		};
+		this.implementationLoop = new ImplementationLoop(
+			this.driver,
+			this.navigator,
+			this.display,
+			this.logger,
+			loopConfig,
+			(message) => this.stopAllAndExit(message),
+		);
+
+		// Initialize event handlers
+		this.eventHandlers = new EventHandlersManager(
+			this.architect,
+			this.navigator,
+			this.driver,
+			this.display,
+			this.logger,
+			(message) => {
+				driverBuffer.push(message);
+				this.implementationLoop.addToDriverBuffer(message);
+			},
+		);
+		this.eventHandlers.setup();
 
 		try {
 			this.logger.logEvent("APP_ARCHITECT_STARTING", {
@@ -353,11 +260,10 @@ export class PairApp {
 			this.logger.logEvent("APP_STARTING_IMPLEMENTATION_LOOP", {
 				planLength: plan.length,
 			});
-			await this.runImplementationLoop(plan);
+			await this.implementationLoop.run(this.task, plan);
 			this.logger.logEvent("APP_IMPLEMENTATION_LOOP_COMPLETED", {});
 
 			// Implementation loop completed - this should only happen when task is done
-			if (this.sessionTimer) clearTimeout(this.sessionTimer);
 			await this.cleanup();
 			return; // Graceful end without forcing process exit
 		} catch (error) {
@@ -371,414 +277,13 @@ export class PairApp {
 	}
 
 	/**
-	 * Run the implementation loop between driver and navigator
-	 */
-	private async runImplementationLoop(plan: string): Promise<void> {
-		// Set hard session time limit
-		const limitMs = this.appConfig.sessionHardLimitMs;
-		const deadline = Date.now() + limitMs;
-		this.sessionTimer = setTimeout(() => {
-			try {
-				this.logger.logEvent("IMPLEMENTATION_HARD_LIMIT_REACHED", {
-					limitMs,
-				});
-				this.display.updateStatus(
-					`⏲️ Session limit reached (${Math.floor(limitMs / 60000)}m) — stopping...`,
-				);
-				void this.stopAllAndExit();
-			} catch {}
-		}, limitMs);
-		// Initialize navigator with plan context
-		this.logger.logEvent("IMPLEMENTATION_LOOP_NAVIGATOR_INIT_START", {});
-		await this.navigator.initialize(this.task, plan);
-		this.logger.logEvent("IMPLEMENTATION_LOOP_NAVIGATOR_INIT_COMPLETE", {});
-
-		// Start driver implementation
-		this.logger.logEvent("IMPLEMENTATION_LOOP_DRIVER_START", {});
-		let driverMessages = await this.driver.startImplementation(plan);
-		this.driverBuffer = [];
-		this.logger.logEvent("IMPLEMENTATION_LOOP_DRIVER_INITIAL_MESSAGES", {
-			messageCount: driverMessages.length,
-		});
-
-		// Main implementation loop
-		let loopCount = 0;
-		let awaitingReviewDecision = false;
-		let awaitingDriverResponseAfterGuidance = false;
-		while (true) {
-			if (Date.now() > deadline) {
-				this.logger.logEvent("IMPLEMENTATION_LOOP_DEADLINE_EXIT", {});
-				break;
-			}
-			loopCount++;
-			this.logger.logEvent("IMPLEMENTATION_LOOP_ITERATION", {
-				loopCount,
-				driverSessionId: this.driver.getSessionId(),
-				navigatorSessionId: this.navigator.getSessionId(),
-			});
-
-			const driverProducedOutput = (driverMessages || []).some(
-				(msg) => msg && msg.trim().length > 0,
-			);
-			if (driverProducedOutput) {
-				awaitingDriverResponseAfterGuidance = false;
-			}
-
-			// Check if driver requested review via MCP tools
-			const driverCommands = this.driver.getAndClearDriverCommands();
-			const driverCommand =
-				driverCommands.length > 0 ? driverCommands[0] : null;
-			const dcType = driverCommand?.type;
-
-			// Guardrail: if driver text indicates completion intent but no review tool was called, nudge to request review immediately
-			if (!dcType && !awaitingReviewDecision) {
-				const combinedDriverText = (driverMessages || [])
-					.join("\n")
-					.toLowerCase();
-				if (PairApp.detectsCompletionIntent(combinedDriverText)) {
-					this.display.updateStatus(
-						"Driver indicated completion — prompting to request review…",
-					);
-					const prompt =
-						"It sounds like you consider the implementation complete. Please request a review now by calling the mcp__driver__driverRequestReview tool with a brief context of what you implemented. Do not continue with further edits until the review is returned.";
-					driverMessages = await this.driver.continueWithFeedback(prompt);
-					continue;
-				}
-			}
-
-			if (dcType === "request_review") {
-				awaitingReviewDecision = true;
-				this.logger.logEvent("IMPLEMENTATION_LOOP_REVIEW_REQUESTED", {});
-				const combinedMessage = Driver.combineMessagesForNavigator([
-					...this.driverBuffer,
-					...driverMessages,
-				]);
-				this.driverBuffer = [];
-				const trimmed = combinedMessage.trim();
-				const navigatorMessage =
-					trimmed.length > 0
-						? combinedMessage
-						: driverCommand?.context?.trim().length
-							? (driverCommand?.context ?? "")
-							: "Driver reports implementation complete and requested review via mcp__driver__driverRequestReview.";
-				const messageForNavigator = navigatorMessage.trim();
-				if (messageForNavigator.length > 0) {
-					this.display.showTransfer("driver", "navigator", "Review request");
-					this.logger.logEvent(
-						"IMPLEMENTATION_LOOP_SENDING_REVIEW_TO_NAVIGATOR",
-						{
-							messageLength: messageForNavigator.length,
-						},
-					);
-					// biome-ignore lint/suspicious/noExplicitAny: Navigator command response type from Claude Code SDK
-					const _navResp: any = await this.navigator.processDriverMessage(
-						messageForNavigator,
-						true,
-					); // true = review was requested
-					// biome-ignore lint/suspicious/noExplicitAny: Navigator command array type from Claude Code SDK
-					const navCommands: any[] = Array.isArray(_navResp)
-						? _navResp
-						: _navResp
-							? [_navResp]
-							: [];
-
-					if (navCommands.length > 0) {
-						awaitingReviewDecision = false;
-						let reviewComments: string | null = null;
-						let shouldEnd = false;
-						let endSummary: string | undefined;
-						for (const cmd of navCommands) {
-							this.logger.logEvent("IMPLEMENTATION_LOOP_NAVIGATOR_COMMAND", {
-								commandType: cmd.type,
-								hasComment: !!cmd.comment,
-								pass: cmd.pass,
-							});
-
-							if (cmd.type === "code_review") {
-								this.display.setPhase("review");
-								// Only extract comments for failed reviews
-								if (!cmd.pass) {
-									reviewComments = Navigator.extractFailedReviewComment(cmd);
-								}
-							}
-
-							if (Navigator.shouldEndSession(cmd)) {
-								shouldEnd = true;
-								endSummary =
-									cmd.type === "complete" ? cmd.summary : cmd.comment;
-							}
-						}
-
-						if (reviewComments && !shouldEnd) {
-							this.logger.logEvent(
-								"IMPLEMENTATION_LOOP_NAVIGATOR_REVIEW_COMMENTS",
-								{
-									commentsLength: reviewComments.length,
-								},
-							);
-							this.display.showTransfer(
-								"navigator",
-								"driver",
-								"Review comments",
-							);
-							this.display.setPhase("execution");
-							driverMessages =
-								await this.driver.continueWithFeedback(reviewComments);
-							continue;
-						}
-
-						if (shouldEnd) {
-							this.logger.logEvent("IMPLEMENTATION_LOOP_COMPLETED", {
-								summary: endSummary || "Implementation finished",
-							});
-							this.display.setPhase("complete");
-							await this.stopAllAndExit(endSummary);
-							return;
-						}
-					} else {
-						// If no commands, re-prompt the navigator until we get a decision (bounded retries)
-						this.display.updateStatus("Waiting for review decision…");
-						let attempts = 0;
-						while (attempts < 5) {
-							attempts++;
-							const retryPrompt = `${messageForNavigator}\n\nSTRICT: Respond with exactly one MCP tool call: mcp__navigator__navigatorCodeReview OR mcp__navigator__navigatorComplete. No other text.`;
-							const retryResp = await this.navigator.processDriverMessage(
-								retryPrompt,
-								true,
-							); // true = still reviewing
-							const cmds: NavigatorCommand[] = Array.isArray(retryResp)
-								? retryResp
-								: retryResp
-									? [retryResp]
-									: [];
-							if (cmds.length > 0) {
-								const reviewParts: string[] = [];
-								let shouldEnd = false;
-								let endSummary: string | undefined;
-								for (const cmd of cmds) {
-									this.logger.logEvent(
-										"IMPLEMENTATION_LOOP_NAVIGATOR_COMMAND",
-										{
-											commandType: cmd.type,
-											hasComment: !!cmd.comment,
-											pass: cmd.pass,
-										},
-									);
-
-									if (cmd.type === "code_review") {
-										this.display.setPhase("review");
-										if (!cmd.pass) {
-											const comment = Navigator.extractFailedReviewComment(cmd);
-											if (comment && comment.trim().length > 0)
-												reviewParts.push(comment);
-										}
-									}
-
-									if (Navigator.shouldEndSession(cmd)) {
-										shouldEnd = true;
-										endSummary =
-											cmd.type === "complete" ? cmd.summary : cmd.comment;
-									}
-								}
-
-								if (reviewParts.length > 0 && !shouldEnd) {
-									const reviewMessage = reviewParts.join("\n\n");
-									this.display.showTransfer(
-										"navigator",
-										"driver",
-										"Review comments",
-									);
-									this.display.setPhase("execution");
-									driverMessages =
-										await this.driver.continueWithFeedback(reviewMessage);
-									break;
-								}
-
-								if (shouldEnd) {
-									this.logger.logEvent("IMPLEMENTATION_LOOP_COMPLETED", {
-										summary: endSummary || "Implementation finished",
-									});
-									this.display.setPhase("complete");
-									await this.stopAllAndExit(endSummary);
-									return;
-								}
-								break;
-							}
-							await new Promise((r) => setTimeout(r, 1000));
-						}
-						if (attempts >= 5) {
-							this.logger.logEvent(
-								"IMPLEMENTATION_LOOP_NAVIGATOR_EMPTY_DECISION",
-								{},
-							);
-						}
-					}
-					continue; // Next loop
-				}
-
-				// Default path: simply continue (unless we're waiting on a review decision or guidance follow-up)
-				if (awaitingReviewDecision || awaitingDriverResponseAfterGuidance) {
-					await new Promise((resolve) => setTimeout(resolve, 500));
-					continue;
-				}
-				this.driverBuffer = [];
-				driverMessages =
-					await this.driver.continueWithFeedback("Please continue.");
-			} else if (dcType === "request_guidance") {
-				this.logger.logEvent("IMPLEMENTATION_LOOP_GUIDANCE_REQUESTED", {});
-				const combinedMessage = Driver.combineMessagesForNavigator([
-					...this.driverBuffer,
-					...driverMessages,
-				]);
-				this.driverBuffer = [];
-				if (combinedMessage) {
-					this.display.showTransfer("driver", "navigator", "Guidance request");
-					this.logger.logEvent(
-						"IMPLEMENTATION_LOOP_SENDING_GUIDANCE_TO_NAVIGATOR",
-						{
-							messageLength: combinedMessage.length,
-						},
-					);
-					// Process guidance request with navigator (not a review)
-					const _navResp: any = await this.navigator.processDriverMessage(
-						combinedMessage,
-						false,
-					);
-					const navCommands: any[] = Array.isArray(_navResp)
-						? _navResp
-						: _navResp
-							? [_navResp]
-							: [];
-
-					// Check for session end in guidance response
-					let shouldEnd = false;
-					let endReason: string | undefined;
-					for (const cmd of navCommands) {
-						if (Navigator.shouldEndSession(cmd)) {
-							shouldEnd = true;
-							endReason = cmd.type === "complete" ? cmd.summary : cmd.comment;
-						}
-					}
-
-					if (shouldEnd) {
-						awaitingDriverResponseAfterGuidance = false;
-						this.logger.logEvent("IMPLEMENTATION_LOOP_COMPLETED", {
-							reason: endReason || "Session completed by navigator",
-						});
-						this.display.setPhase("complete");
-						await this.stopAllAndExit(endReason);
-						return;
-					}
-
-					// Provide guidance and continue
-					this.display.showTransfer("navigator", "driver", "Guidance");
-					this.display.updateStatus("Providing guidance to driver");
-					const guidanceMessage =
-						"Continue with your implementation based on the guidance provided.";
-					driverMessages =
-						await this.driver.continueWithFeedback(guidanceMessage);
-					awaitingDriverResponseAfterGuidance =
-						(driverMessages || []).length === 0 ||
-						(driverMessages || []).every((msg) => !msg || !msg.trim());
-					continue;
-				}
-				awaitingDriverResponseAfterGuidance = true;
-			} else {
-				// Empty batch received. Brief backoff, then continue.
-				this.logger.logEvent("IMPLEMENTATION_LOOP_EMPTY_BATCH", {});
-				await new Promise((r) => setTimeout(r, 300));
-				driverMessages = await this.driver.continueWithFeedback(
-					"Please continue with the next step.",
-				);
-				this.driverBuffer = [];
-			}
-		}
-	}
-
-	// Heuristic to detect that the driver believes implementation is complete and intends to request review
-	private static detectsCompletionIntent(text: string): boolean {
-		if (!text) return false;
-		const signals = [
-			"implementation is complete",
-			"i have completed",
-			"finished implementation",
-			"ready for review",
-			"request a review",
-			"should now request a review",
-			"please review my work",
-		];
-		return signals.some((s) => text.includes(s));
-	}
-
-	/**
-	 * Set up event handlers for display
-	 */
-	private setupEventHandlers(): void {
-		// Architect events
-		this.architect.on("message", (message) => {
-			this.display.showArchitectTurn(message.content);
-		});
-
-		this.architect.on("tool_use", ({ tool, input }) => {
-			this.display.showToolUse("architect", tool, input);
-			this.logger.logEvent("ARCHITECT_TOOL_USE", {
-				tool,
-				inputKeys: Object.keys(input || {}),
-			});
-		});
-
-		// Navigator events
-		this.navigator.on("message", (message) => {
-			if (this.display.getPhase && this.display.getPhase() === "complete") {
-				return;
-			}
-			this.display.showNavigatorTurn(message.content);
-		});
-
-		this.navigator.on("tool_use", ({ tool, input }) => {
-			this.display.showToolUse("navigator", tool, input);
-			this.logger.logEvent("NAVIGATOR_TOOL_USE", {
-				tool,
-				inputKeys: Object.keys(input || {}),
-			});
-		});
-
-		// Driver events
-		this.driver.on("message", (message) => {
-			this.display.showDriverTurn(message.content);
-			// Buffer for permission bulk-forwarding
-			const t = (message.content || "").trim();
-			if (t) this.driverBuffer.push(t);
-		});
-
-		this.driver.on("tool_use", ({ tool, input }) => {
-			this.display.showToolUse("driver", tool, input);
-			this.logger.logEvent("DRIVER_TOOL_USE", {
-				tool,
-				inputKeys: Object.keys(input || {}),
-			});
-			// Summarize tool usage line for buffered transcript
-			try {
-				const file = input?.file_path || input?.path || "";
-				const cmd = input?.command || "";
-				const line =
-					tool === "Bash" && cmd
-						? `⚙️  Tool: Bash - ${String(cmd)}`
-						: file
-							? `⚙️  Tool: ${tool} - ${file}`
-							: `⚙️  Tool: ${tool}`;
-				this.driverBuffer.push(line);
-			} catch {}
-		});
-	}
-
-	/**
 	 * Clean up resources
 	 */
 	private async cleanup(): Promise<void> {
 		this.display?.cleanup();
-		this.logger?.close();
-		if (this.sessionTimer) clearTimeout(this.sessionTimer);
+		this.implementationLoop?.cleanup();
+
+		// Clean up MCP server first
 		try {
 			if (this.mcp) {
 				await this.mcp.close();
@@ -788,6 +293,8 @@ export class PairApp {
 				error: error instanceof Error ? error.message : String(error),
 			});
 		}
+
+		// Clean up providers
 		if (this.providers.length > 0) {
 			await Promise.allSettled(
 				this.providers.map((provider) =>
@@ -802,6 +309,9 @@ export class PairApp {
 				),
 			);
 		}
+
+		// Close logger last to avoid write-after-end errors
+		this.logger?.close();
 	}
 
 	private async stopAllAndExit(completionMessage?: string): Promise<void> {

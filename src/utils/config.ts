@@ -42,15 +42,15 @@ export const DEFAULT_CONFIG: AppConfig = {
 	enableSyncStatus: true, // Enable by default
 	architectConfig: {
 		provider: "claude-code",
-		model: "claude-opus-4.1-20250805", // Opus 4.1 for planning
+		model: "claude-opus-4-1-20250805", // Opus 4.1 for planning
 	},
 	navigatorConfig: {
 		provider: "claude-code",
-		model: undefined, // Use provider default (Sonnet)
+		model: "claude-sonnet-4-20250514",
 	},
 	driverConfig: {
 		provider: "claude-code",
-		model: undefined, // Use provider default (Sonnet)
+		model: "claude-sonnet-4-20250514",
 	},
 };
 
