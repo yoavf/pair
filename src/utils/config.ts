@@ -2,6 +2,8 @@
  * Configuration management for Pair
  */
 
+import type { ModelConfig } from "../providers/types.js";
+
 export interface AppConfig {
 	/** Maximum turns for navigator session */
 	navigatorMaxTurns: number;
@@ -15,23 +17,20 @@ export interface AppConfig {
 	/** Maximum prompt file size in bytes */
 	maxPromptFileSize: number;
 
-	/** Claude model to use (optional - uses CLI default if not specified) */
-	model?: string;
-
 	/** Hard time limit for an execution session in milliseconds */
 	sessionHardLimitMs: number;
 
 	/** Enable sync status updates in footer (default: true) */
 	enableSyncStatus: boolean;
 
-	/** Provider type for architect agent (default: "claude-code") */
-	architectProvider: string;
+	/** Model configuration for architect agent */
+	architectConfig: ModelConfig;
 
-	/** Provider type for navigator agent (default: "claude-code") */
-	navigatorProvider: string;
+	/** Model configuration for navigator agent */
+	navigatorConfig: ModelConfig;
 
-	/** Provider type for driver agent (default: "claude-code") */
-	driverProvider: string;
+	/** Model configuration for driver agent */
+	driverConfig: ModelConfig;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -39,13 +38,43 @@ export const DEFAULT_CONFIG: AppConfig = {
 	driverMaxTurns: 20,
 	maxPromptLength: 10000,
 	maxPromptFileSize: 100 * 1024, // 100KB
-	model: undefined, // Use CLI default
 	sessionHardLimitMs: 30 * 60 * 1000, // 30 minutes
 	enableSyncStatus: true, // Enable by default
-	architectProvider: "claude-code",
-	navigatorProvider: "opencode",
-	driverProvider: "opencode",
+	architectConfig: {
+		provider: "claude-code",
+		model: "claude-opus-4.1-20250805", // Opus 4.1 for planning
+	},
+	navigatorConfig: {
+		provider: "claude-code",
+		model: undefined, // Use provider default (Sonnet)
+	},
+	driverConfig: {
+		provider: "claude-code",
+		model: undefined, // Use provider default (Sonnet)
+	},
 };
+
+/**
+ * Parse model configuration from string format "provider/model"
+ */
+export function parseModelConfig(
+	configStr: string | undefined,
+	defaultConfig: ModelConfig,
+): ModelConfig {
+	if (!configStr) return defaultConfig;
+
+	const firstSlashIndex = configStr.indexOf("/");
+	if (firstSlashIndex === -1) {
+		// No slash, treat entire string as provider
+		return { provider: configStr, model: undefined };
+	}
+
+	// Split at first slash: provider / model
+	const provider = configStr.substring(0, firstSlashIndex);
+	const model = configStr.substring(firstSlashIndex + 1);
+
+	return { provider, model: model || undefined };
+}
 
 /**
  * Load configuration from environment variables with fallbacks to defaults
@@ -64,21 +93,24 @@ export function loadConfig(): AppConfig {
 		maxPromptFileSize:
 			parseInt(process.env.CLAUDE_PAIR_MAX_PROMPT_FILE_SIZE || "", 10) ||
 			DEFAULT_CONFIG.maxPromptFileSize,
-		model: process.env.CLAUDE_PAIR_MODEL || DEFAULT_CONFIG.model,
 		sessionHardLimitMs:
 			(parseInt(process.env.CLAUDE_PAIR_SESSION_HARD_LIMIT_MIN || "", 10) ||
 				30) *
 			60 *
 			1000,
 		enableSyncStatus: process.env.CLAUDE_PAIR_DISABLE_SYNC_STATUS !== "true",
-		architectProvider:
-			process.env.CLAUDE_PAIR_ARCHITECT_PROVIDER ||
-			DEFAULT_CONFIG.architectProvider,
-		navigatorProvider:
-			process.env.CLAUDE_PAIR_NAVIGATOR_PROVIDER ||
-			DEFAULT_CONFIG.navigatorProvider,
-		driverProvider:
-			process.env.CLAUDE_PAIR_DRIVER_PROVIDER || DEFAULT_CONFIG.driverProvider,
+		architectConfig: parseModelConfig(
+			process.env.CLAUDE_PAIR_ARCHITECT_CONFIG,
+			DEFAULT_CONFIG.architectConfig,
+		),
+		navigatorConfig: parseModelConfig(
+			process.env.CLAUDE_PAIR_NAVIGATOR_CONFIG,
+			DEFAULT_CONFIG.navigatorConfig,
+		),
+		driverConfig: parseModelConfig(
+			process.env.CLAUDE_PAIR_DRIVER_CONFIG,
+			DEFAULT_CONFIG.driverConfig,
+		),
 	};
 
 	return config;
@@ -121,16 +153,16 @@ export function validateConfig(
 
 	// Validate provider types if available providers list is provided
 	if (availableProviders) {
-		const providers = [
-			{ name: "architect", type: config.architectProvider },
-			{ name: "navigator", type: config.navigatorProvider },
-			{ name: "driver", type: config.driverProvider },
+		const configs = [
+			{ name: "architect", config: config.architectConfig },
+			{ name: "navigator", config: config.navigatorConfig },
+			{ name: "driver", config: config.driverConfig },
 		];
 
-		for (const provider of providers) {
-			if (!availableProviders.includes(provider.type)) {
+		for (const { name, config: modelConfig } of configs) {
+			if (!availableProviders.includes(modelConfig.provider)) {
 				throw new Error(
-					`Unknown ${provider.name} provider type: "${provider.type}". Available providers: ${availableProviders.join(", ")}`,
+					`Unknown ${name} provider type: "${modelConfig.provider}". Available providers: ${availableProviders.join(", ")}`,
 				);
 			}
 		}

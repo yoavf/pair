@@ -977,7 +977,6 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 	private readonly activeCleanups = new Set<() => Promise<void>>();
 	private externalMcpWarningLogged = false;
 	private lastResolvedDirectory?: string;
-	private activeProjectPath?: string;
 
 	constructor(config: ProviderConfig) {
 		super(config);

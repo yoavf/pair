@@ -31,7 +31,12 @@ import {
 import type { PermissionRequest } from "./types/permission.js";
 import type { NavigatorCommand } from "./types.js";
 import { displayBanner } from "./utils/banner.js";
-import { type AppConfig, loadConfig, validateConfig } from "./utils/config.js";
+import {
+	type AppConfig,
+	loadConfig,
+	parseModelConfig,
+	validateConfig,
+} from "./utils/config.js";
 import { Logger } from "./utils/logger.js";
 import { TIMEOUT_CONFIG, TimeoutManager } from "./utils/timeouts.js";
 import {
@@ -196,23 +201,36 @@ class ClaudePairApp {
 		const drvUrl = this.mcp.urls.driver;
 		this.logger.logEvent("APP_MCP_URLS", { navUrl, drvUrl });
 
-		const makeProviderConfig = (providerType: string): ProviderConfig => ({
-			type: providerType,
+		const makeProviderConfig = (
+			provider: string,
+			model?: string,
+		): ProviderConfig => ({
+			type: provider,
+			model,
 		});
 
 		// Create providers for all agents
 		const architectProvider = agentProviderFactory.createProvider(
-			makeProviderConfig(this.appConfig.architectProvider),
+			makeProviderConfig(
+				this.appConfig.architectConfig.provider,
+				this.appConfig.architectConfig.model,
+			),
 		) as EmbeddedAgentProvider;
 		this.providers.push(architectProvider);
 
 		const navigatorProvider = agentProviderFactory.createProvider(
-			makeProviderConfig(this.appConfig.navigatorProvider),
+			makeProviderConfig(
+				this.appConfig.navigatorConfig.provider,
+				this.appConfig.navigatorConfig.model,
+			),
 		) as EmbeddedAgentProvider;
 		this.providers.push(navigatorProvider);
 
 		const driverProvider = agentProviderFactory.createProvider(
-			makeProviderConfig(this.appConfig.driverProvider),
+			makeProviderConfig(
+				this.appConfig.driverConfig.provider,
+				this.appConfig.driverConfig.model,
+			),
 		) as EmbeddedAgentProvider;
 		this.providers.push(driverProvider);
 
@@ -830,15 +848,27 @@ class ClaudePairApp {
  * Display help message
  */
 function showHelp(): void {
-	console.log("Usage: pair claude [options]");
+	console.log("Usage: pair [options]");
 	console.log("\nAvailable options:");
-	console.log("  -p, --prompt <text>    Specify the task prompt");
+	console.log("  -p, --prompt <text>       Specify the task prompt");
 	console.log(
-		"  --path <path>          Set the project path (default: current directory)",
+		"  --path <path>             Set the project path (default: current directory)",
 	);
-	console.log("  -f, --file <file>      Read prompt from file");
-	console.log("  --version              Show version information");
-	console.log("  --help                 Show this help message");
+	console.log("  -f, --file <file>         Read prompt from file");
+	console.log(
+		"  --architect <provider/model>  Set architect provider and model",
+	);
+	console.log(
+		"  --navigator <provider/model>  Set navigator provider and model",
+	);
+	console.log("  --driver <provider/model>     Set driver provider and model");
+	console.log("  --version                 Show version information");
+	console.log("  --help                    Show this help message");
+	console.log("\nExamples:");
+	console.log('  pair -p "Add dark mode toggle"');
+	console.log(
+		"  pair --architect opencode/openai/gpt-4 --navigator claude-code --driver opencode/openrouter/gemini-2.0-flash",
+	);
 }
 
 /**
@@ -851,51 +881,20 @@ async function main(): Promise<void> {
 
 		const args = process.argv.slice(2);
 
-		// Handle global --version flag
-		if (args.length === 1 && (args[0] === "--version" || args[0] === "-v")) {
+		// Handle --version flag
+		if (args.includes("--version") || args.includes("-v")) {
 			console.log(getVersion());
 			process.exit(0);
 		}
 
-		// Handle global --help flag
-		if (args.length === 1 && (args[0] === "--help" || args[0] === "-h")) {
+		// Handle --help flag
+		if (args.includes("--help") || args.includes("-h")) {
 			showHelp();
 			process.exit(0);
 		}
 
-		// Handle 'pair help' command
+		// Handle 'help' command
 		if (args.length === 1 && args[0] === "help") {
-			showHelp();
-			process.exit(0);
-		}
-
-		// Check if first argument is 'claude' subcommand
-		if (args.length === 0 || args[0] !== "claude") {
-			// This is an actual error case (no args or invalid subcommand)
-			displayBanner();
-			console.error("Usage: pair claude [options]");
-			console.error("\nAvailable options:");
-			console.error("  -p, --prompt <text>    Specify the task prompt");
-			console.error(
-				"  --path <path>          Set the project path (default: current directory)",
-			);
-			console.error("  -f, --file <file>      Read prompt from file");
-			console.error("  --version              Show version information");
-			console.error("  --help                 Show this help message");
-			process.exit(1);
-		}
-
-		// Remove 'claude' subcommand and proceed with remaining args
-		const claudeArgs = args.slice(1);
-
-		// Handle --version within claude subcommand (before banner)
-		if (claudeArgs.includes("--version") || claudeArgs.includes("-v")) {
-			console.log(getVersion());
-			process.exit(0);
-		}
-
-		// Handle --help within claude subcommand (before banner)
-		if (claudeArgs.includes("--help") || claudeArgs.includes("-h")) {
 			showHelp();
 			process.exit(0);
 		}
@@ -903,36 +902,75 @@ async function main(): Promise<void> {
 		// Display banner for normal operations
 		displayBanner();
 
-		validateCliArgs(claudeArgs);
+		validateCliArgs(args);
 
 		let projectPath = process.cwd();
 		let initialPrompt: string | undefined;
 		let promptFile: string | undefined;
 		// Parse arguments
-		for (let i = 0; i < claudeArgs.length; i++) {
-			const arg = claudeArgs[i];
+		for (let i = 0; i < args.length; i++) {
+			const arg = args[i];
 
 			if (arg === "--path") {
-				if (i + 1 < claudeArgs.length) {
-					projectPath = claudeArgs[i + 1];
+				if (i + 1 < args.length) {
+					projectPath = args[i + 1];
 					i++;
 				}
 			} else if (arg.startsWith("--path=")) {
 				projectPath = arg.split("=")[1];
 			} else if (arg === "--prompt" || arg === "-p") {
-				if (i + 1 < claudeArgs.length) {
-					initialPrompt = claudeArgs[i + 1];
+				if (i + 1 < args.length) {
+					initialPrompt = args[i + 1];
 					i++;
 				}
 			} else if (arg.startsWith("--prompt=")) {
 				initialPrompt = arg.substring("--prompt=".length);
 			} else if (arg === "--file" || arg === "-f") {
-				if (i + 1 < claudeArgs.length) {
-					promptFile = claudeArgs[i + 1];
+				if (i + 1 < args.length) {
+					promptFile = args[i + 1];
 					i++;
 				}
 			} else if (arg.startsWith("--file=")) {
 				promptFile = arg.split("=")[1];
+			} else if (arg === "--architect") {
+				if (i + 1 < args.length) {
+					config.architectConfig = parseModelConfig(
+						args[i + 1],
+						config.architectConfig,
+					);
+					i++;
+				}
+			} else if (arg.startsWith("--architect=")) {
+				config.architectConfig = parseModelConfig(
+					arg.substring("--architect=".length),
+					config.architectConfig,
+				);
+			} else if (arg === "--navigator") {
+				if (i + 1 < args.length) {
+					config.navigatorConfig = parseModelConfig(
+						args[i + 1],
+						config.navigatorConfig,
+					);
+					i++;
+				}
+			} else if (arg.startsWith("--navigator=")) {
+				config.navigatorConfig = parseModelConfig(
+					arg.substring("--navigator=".length),
+					config.navigatorConfig,
+				);
+			} else if (arg === "--driver") {
+				if (i + 1 < args.length) {
+					config.driverConfig = parseModelConfig(
+						args[i + 1],
+						config.driverConfig,
+					);
+					i++;
+				}
+			} else if (arg.startsWith("--driver=")) {
+				config.driverConfig = parseModelConfig(
+					arg.substring("--driver=".length),
+					config.driverConfig,
+				);
 			} else if (!arg.startsWith("-")) {
 				if (projectPath === process.cwd()) {
 					projectPath = arg;
