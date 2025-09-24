@@ -44,6 +44,15 @@ export abstract class BaseEmbeddedProvider implements EmbeddedAgentProvider {
 	}
 
 	/**
+	 * Get provider-specific planning configuration
+	 * Must be implemented by concrete providers
+	 */
+	abstract getPlanningConfig(task: string): {
+		prompt: string;
+		detectPlanCompletion: (message: any) => string | null;
+	};
+
+	/**
 	 * Optional cleanup
 	 */
 	async cleanup(): Promise<void> {
