@@ -44,30 +44,22 @@ const Footer: React.FC<Props> = ({
 	const terminalWidth = process.stdout.columns || 80;
 	const horizontalLine = "─".repeat(terminalWidth);
 
-	const providerSegments: string[] = [];
-	const modelSegments: string[] = [];
+	let line1 = "";
+	let line2 = "";
 
 	if (activity) {
-		// When there's activity, show it instead of provider/model info
-		providerSegments.push(activity);
+		// When there's activity, show it on the first line
+		line1 = activity;
 	} else if (providers && models) {
 		if (phase === "planning") {
 			// Planning phase: show architect only
-			providerSegments.push(`Architect: ${providers.architect}`);
-			modelSegments.push(`Model: ${formatModelName(models.architect)}`);
+			line1 = `Architect: ${providers.architect} / ${formatModelName(models.architect)}`;
 		} else if (phase === "execution" || phase === "review") {
-			// Execution phase: show navigator and driver
-			providerSegments.push(
-				`Navigator: ${providers.navigator} | Driver: ${providers.driver}`,
-			);
-			modelSegments.push(
-				`Models: ${formatModelName(models.navigator)} | ${formatModelName(models.driver)}`,
-			);
+			// Execution phase: show driver on line 1, navigator on line 2
+			line1 = `Driver: ${providers.driver} / ${formatModelName(models.driver)}`;
+			line2 = `Navigator: ${providers.navigator} / ${formatModelName(models.navigator)}`;
 		}
 	}
-
-	const providerText = providerSegments.join("  •  ") || " ";
-	const modelText = modelSegments.join("  •  ");
 
 	return (
 		<Box flexDirection="column">
@@ -75,13 +67,13 @@ const Footer: React.FC<Props> = ({
 			<Text backgroundColor={absRightColor || undefined} color="white">
 				{" ".repeat(terminalWidth)}
 			</Text>
-			{/* First line: Provider information */}
+			{/* First line: Driver or Architect */}
 			<Box paddingX={1} justifyContent="space-between" marginTop={-1}>
 				<Text
 					backgroundColor={absRightColor || undefined}
 					color={absRightColor ? "black" : "gray"}
 				>
-					{providerText}
+					{line1 || " "}
 				</Text>
 				<Text
 					backgroundColor={absRightColor || undefined}
@@ -92,14 +84,14 @@ const Footer: React.FC<Props> = ({
 						: "Press Ctrl+C to quit"}
 				</Text>
 			</Box>
-			{/* Second line: Model information (if available) */}
-			{modelText && (
+			{/* Second line: Navigator (if available) */}
+			{line2 && (
 				<Box paddingX={1} marginTop={0}>
 					<Text
 						backgroundColor={absRightColor || undefined}
 						color={absRightColor ? "black" : "gray"}
 					>
-						{modelText}
+						{line2}
 					</Text>
 				</Box>
 			)}
