@@ -101,7 +101,7 @@ export class PermissionHandler {
 		return async (
 			toolName: string,
 			input: Record<string, unknown>,
-			_options?: { suggestions?: Record<string, unknown> },
+			_options?: { suggestions?: Record<string, unknown>; toolId?: string },
 		): Promise<
 			| {
 					behavior: "allow";
@@ -133,7 +133,8 @@ export class PermissionHandler {
 				driverTranscript: transcript,
 				toolName,
 				input,
-			});
+				toolId: _options?.toolId, // Pass tool ID if available
+			} as PermissionRequest);
 
 			this.display?.showTransfer("navigator", "driver", "Decision");
 			this.display?.updateStatus(

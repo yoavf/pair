@@ -110,7 +110,7 @@ describe.skipIf(!integrationTestsEnabled)("Navigator Integration Tests", () => {
     const contentItem = toolResult.content[0];
     const reviewMessage = extractTextContent(contentItem) || "Driver requesting review";
 
-    const commands = await navigator.processDriverMessage(reviewMessage);
+    const commands = await navigator.processDriverMessage(reviewMessage, true); // true = review requested
 
     expect(commands).not.toBeNull();
     expect(Array.isArray(commands)).toBe(true);

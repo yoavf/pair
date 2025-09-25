@@ -22,6 +22,7 @@ import {
 	navigatorMcpServer,
 } from "../utils/mcpServers.js";
 import { TIMEOUT_CONFIG, TimeoutManager } from "../utils/timeouts.js";
+import { toolTracker } from "../utils/toolTracking.js";
 import {
 	NAVIGATOR_CONTINUE_PROMPT_TEMPLATE,
 	NAVIGATOR_INITIAL_PROMPT_TEMPLATE,
@@ -47,6 +48,7 @@ export class Navigator extends EventEmitter {
 	// Track permission-approval display state to avoid duplicate decisions
 	private inPermissionApproval = false;
 	private permissionDecisionShown = false;
+	private currentReviewToolId?: string;
 
 	constructor(
 		private systemPrompt: string,
@@ -268,6 +270,9 @@ export class Navigator extends EventEmitter {
 
 		signal?.throwIfAborted();
 
+		// Get the tool ID if provided
+		this.currentReviewToolId = (request as any).toolId;
+
 		const toolDetails = `Tool: ${request.toolName}\nInput: ${JSON.stringify(request.input, null, 2)}`;
 		const strictCore = `CRITICAL: This is a PERMISSION REQUEST. You MUST respond with EXACTLY ONE of these MCP tool calls:
 - mcp__navigator__navigatorApprove (if you approve this specific edit)
@@ -298,6 +303,14 @@ DO NOT call mcp__navigator__navigatorComplete or mcp__navigator__navigatorCodeRe
 			const decision = this.extractPermissionDecision(result.commands);
 
 			if (decision.type === "approve") {
+				// Record review result if we have a tool ID
+				if (this.currentReviewToolId) {
+					toolTracker.recordReview(
+						this.currentReviewToolId,
+						true,
+						decision.comment,
+					);
+				}
 				return {
 					allowed: true,
 					updatedInput: request.input,
@@ -306,6 +319,14 @@ DO NOT call mcp__navigator__navigatorComplete or mcp__navigator__navigatorCodeRe
 			}
 
 			if (decision.type === "deny") {
+				// Record review result if we have a tool ID
+				if (this.currentReviewToolId) {
+					toolTracker.recordReview(
+						this.currentReviewToolId,
+						false,
+						decision.comment,
+					);
+				}
 				return {
 					allowed: false,
 					reason: decision.comment || "Navigator denied permission",
@@ -326,6 +347,7 @@ DO NOT call mcp__navigator__navigatorComplete or mcp__navigator__navigatorCodeRe
 		} finally {
 			this.inPermissionApproval = false;
 			this.permissionDecisionShown = false;
+			this.currentReviewToolId = undefined;
 		}
 	}
 

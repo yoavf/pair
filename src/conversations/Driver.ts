@@ -9,6 +9,7 @@ import type { DriverCommand, Role } from "../types.js";
 import type { Logger } from "../utils/logger.js";
 import { DRIVER_TOOL_NAMES, driverMcpServer } from "../utils/mcpServers.js";
 import { TIMEOUT_CONFIG, TimeoutManager } from "../utils/timeouts.js";
+import { toolTracker } from "../utils/toolTracking.js";
 
 /**
  * Driver agent - implements the plan with navigator reviews
@@ -26,6 +27,7 @@ export class Driver extends EventEmitter {
 	private pendingToolWaiters: Array<() => void> = [];
 	private driverCommands: DriverCommand[] = [];
 	private toolResults: Map<string, any> = new Map();
+	private toolIdMapping = new Map<string, string>(); // Maps tool_use_id to our tool ID
 
 	// Optional canUseTool callback for permission-mode gating (SDK dynamic shapes)
 	private canUseTool?: (
@@ -268,18 +270,34 @@ export class Driver extends EventEmitter {
 								uiText += `${item.text}\n`;
 								fwdText += `${item.text}\n`;
 							} else if (item.type === "tool_use") {
+								// Generate a tracking ID for reviewable tools
+								let trackingId: string | undefined;
+								if (item.name && toolTracker.isReviewableTool(item.name)) {
+									trackingId = toolTracker.registerTool(
+										item.name,
+										item.input,
+										"driver" as Role,
+									);
+								}
+
 								this.emit("tool_use", {
 									role: "driver" as Role,
 									tool: item.name,
 									input: item.input,
+									trackingId, // Include tracking ID if available
 								});
 								// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK tool_use item structure
 								const toolUseId = (item as any).id || (item as any).tool_use_id;
 								if (toolUseId) {
 									this.pendingTools.add(toolUseId);
+									// Map tool_use_id to tracking ID
+									if (trackingId) {
+										this.toolIdMapping.set(toolUseId, trackingId);
+									}
 									this.logger.logEvent("DRIVER_TOOL_PENDING", {
 										id: toolUseId,
 										tool: item.name,
+										trackingId,
 									});
 
 									// Store MCP tool results for driver communication
