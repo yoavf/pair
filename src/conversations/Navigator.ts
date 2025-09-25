@@ -21,7 +21,7 @@ import {
 	NAVIGATOR_TOOL_NAMES,
 	navigatorMcpServer,
 } from "../utils/mcpServers.js";
-import { TIMEOUT_CONFIG, TimeoutManager } from "../utils/timeouts.js";
+import { TIMEOUT_CONFIG, waitForCondition } from "../utils/timeouts.js";
 import { toolTracker } from "../utils/toolTracking.js";
 import {
 	NAVIGATOR_CONTINUE_PROMPT_TEMPLATE,
@@ -555,7 +555,7 @@ DO NOT call mcp__navigator__navigatorComplete or mcp__navigator__navigatorCodeRe
 	private waitForNoPendingTools(
 		timeoutMs = TIMEOUT_CONFIG.TOOL_COMPLETION,
 	): Promise<void> {
-		return TimeoutManager.createWaiterTimeout(
+		return waitForCondition(
 			() => this.pendingTools.size === 0,
 			async () => {
 				this.logger.logEvent("NAVIGATOR_PENDING_TOOL_TIMEOUT", {
