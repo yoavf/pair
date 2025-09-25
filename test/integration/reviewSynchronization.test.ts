@@ -68,6 +68,25 @@ describe("Review Synchronization Integration", () => {
     expect(messages[1].sessionRole).toBe("navigator");
   });
 
+  it("ensures review timestamp follows tool when navigator approves first", async () => {
+    const trackingId = toolTracker.registerTool("Write", { file_path: "chronology.txt" }, "driver");
+
+    // Navigator approves before tool output is presented
+    toolTracker.recordReview(trackingId, true, "Go ahead");
+
+    display.showToolUse("driver", "Write", {
+      file_path: "chronology.txt",
+      trackingId
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(messages).toHaveLength(2);
+    expect(messages[0].content).toContain("Write");
+    expect(messages[1].content).toContain("Approved");
+    expect(messages[0].timestamp.getTime()).toBeLessThan(messages[1].timestamp.getTime());
+  });
+
   it("should display tool and denial together", async () => {
     const trackingId = toolTracker.registerTool("Edit", { file_path: "app.js" }, "driver");
 

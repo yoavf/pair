@@ -12,6 +12,8 @@ export interface TrackedTool {
 	timestamp: Date;
 	status: "pending" | "approved" | "denied" | "displayed";
 	reviewComment?: string;
+	providerCallId?: string;
+	permissionRequestId?: string;
 }
 
 export interface ToolReviewResult {
@@ -31,6 +33,8 @@ export class ToolTracker {
 		(result: ToolReviewResult) => void
 	>();
 	private toolCounter = 0;
+	private callIdToToolId = new Map<string, string>();
+	private permissionRequestIdToToolId = new Map<string, string>();
 	private readonly REVIEW_TIMEOUT_MS = 2000;
 
 	/**
@@ -63,6 +67,39 @@ export class ToolTracker {
 		}
 
 		return id;
+	}
+
+	associateCallId(toolId: string, callId: string): void {
+		const tool = this.tools.get(toolId);
+		if (!tool) return;
+		tool.providerCallId = callId;
+		this.callIdToToolId.set(callId, toolId);
+	}
+
+	getToolIdByCallId(callId: string): string | undefined {
+		return this.callIdToToolId.get(callId);
+	}
+
+	/**
+	 * Associate a permission request ID with a tool
+	 */
+	associatePermissionRequest(
+		toolId: string,
+		permissionRequestId: string,
+	): void {
+		const tool = this.tools.get(toolId);
+		if (!tool) return;
+		tool.permissionRequestId = permissionRequestId;
+		this.permissionRequestIdToToolId.set(permissionRequestId, toolId);
+	}
+
+	/**
+	 * Get tool ID by permission request ID
+	 */
+	getToolIdByPermissionRequestId(
+		permissionRequestId: string,
+	): string | undefined {
+		return this.permissionRequestIdToToolId.get(permissionRequestId);
 	}
 
 	/**
@@ -150,6 +187,12 @@ export class ToolTracker {
 				this.tools.delete(id);
 				this.pendingReviews.delete(id);
 				this.reviewCallbacks.delete(id);
+				if (tool.providerCallId) {
+					this.callIdToToolId.delete(tool.providerCallId);
+				}
+				if (tool.permissionRequestId) {
+					this.permissionRequestIdToToolId.delete(tool.permissionRequestId);
+				}
 			}
 		}
 	}
@@ -168,6 +211,8 @@ export class ToolTracker {
 		this.tools.clear();
 		this.pendingReviews.clear();
 		this.reviewCallbacks.clear();
+		this.callIdToToolId.clear();
+		this.permissionRequestIdToToolId.clear();
 		this.toolCounter = 0;
 	}
 }

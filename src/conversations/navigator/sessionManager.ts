@@ -152,11 +152,10 @@ export class NavigatorSessionManager extends EventEmitter {
 									this.logger.logEvent("NAVIGATOR_TOOL_MISSING_NAME", {
 										item: JSON.stringify(item),
 									});
-									console.warn("Navigator: tool_use item missing name:", item);
 									continue;
 								}
 								const tname = item.name;
-								const isDecision =
+								const _isDecision =
 									NavigatorSessionManager.isDecisionTool(tname);
 								const allowEmit = true;
 								// Emit tool usage
@@ -274,15 +273,6 @@ export class NavigatorSessionManager extends EventEmitter {
 				type: "code_review",
 				pass,
 				comment: comment || undefined,
-			};
-		}
-
-		if (toolName === "mcp__navigator__navigatorComplete") {
-			const summary =
-				toolResult.content?.summary || toolResult.text?.trim() || "";
-			return {
-				type: "complete",
-				summary: summary || undefined,
 			};
 		}
 

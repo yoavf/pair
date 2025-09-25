@@ -26,12 +26,12 @@ describe("formatSystemLine", () => {
     expect(out!.symbolColor).toBe("cyan");
   });
 
-  it("formats navigator complete with green stop symbol", () => {
-    const out = formatSystemLine("navigator", "mcp__navigator__navigatorComplete", { summary: "All tasks completed" });
+  it("formats navigator code review with pass", () => {
+    const out = formatSystemLine("navigator", "mcp__navigator__navigatorCodeReview", { comment: "All tasks completed", pass: true });
     expect(out).not.toBeNull();
-    expect(out!.content).toBe("Completed: All tasks completed");
-    expect(out!.symbol).toBe("⏹");
-    expect(out!.symbolColor).toBe("#00ff00");
+    expect(out!.content).toBe("Code Review (pass)");
+    expect(out!.symbol).toBe("•");
+    expect(out!.symbolColor).toBe("cyan");
   });
 
   it("formats driver request review without leading dot (suppressed symbol)", () => {

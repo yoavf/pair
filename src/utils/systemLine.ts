@@ -10,7 +10,6 @@ export interface SystemLineFormat {
 // - navigatorApprove -> ✓ (greenBright)
 // - navigatorDeny -> x (red)
 // - navigatorCodeReview -> • (cyan)
-// - navigatorComplete -> ⏹ (greenBright)
 // - driverRequestReview -> text only (no symbol override)
 function toNavigatorToolId(tool: string): string | null {
 	if (tool.startsWith("mcp__navigator__")) return tool;
@@ -40,7 +39,7 @@ export function formatSystemLine(
 	if (role === "navigator" && navigatorTool) {
 		const comment =
 			params && typeof params.comment === "string" ? params.comment : "";
-		const summary =
+		const _summary =
 			params && typeof (params as any).summary === "string"
 				? (params as any).summary
 				: "";
@@ -60,17 +59,11 @@ export function formatSystemLine(
 			};
 		}
 		if (navigatorTool === "mcp__navigator__navigatorCodeReview") {
+			const pass = params && params.pass === true;
 			return {
-				content: `Code Review${comment ? `: ${comment}` : ""}`,
+				content: `Code Review${pass ? ` (pass)` : comment ? `: ${comment}` : ""}`,
 				symbol: "•",
 				symbolColor: "cyan",
-			};
-		}
-		if (navigatorTool === "mcp__navigator__navigatorComplete") {
-			return {
-				content: `Completed${summary ? `: ${summary}` : ""}`,
-				symbol: "⏹",
-				symbolColor: "#00ff00",
 			};
 		}
 	}

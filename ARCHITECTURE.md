@@ -24,7 +24,7 @@ graph TB
         N[Navigator Instance]
         N -->|HTTP/SSE| N_EP
         N_EP --> N_SERVER[Navigator MCP Server]
-        N_SERVER --> N_TOOLS["🔧 Navigator Tools:<br/>• navigatorApprove<br/>• navigatorDeny<br/>• navigatorCodeReview<br/>• navigatorComplete"]
+        N_SERVER --> N_TOOLS["🔧 Navigator Tools:<br/>• navigatorApprove<br/>• navigatorDeny<br/>• navigatorCodeReview"]
     end
 
     subgraph "Driver Agent Process"

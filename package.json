@@ -18,7 +18,8 @@
 		"test:unit": "vitest run test/unit",
 		"test:integration": "RUN_INTEGRATION_TESTS=true vitest run test/integration",
 		"test:coverage": "vitest run --coverage",
-		"preview": "node scripts/run-preview.js"
+		"preview": "node scripts/run-preview.js",
+		"analyze-logs": "tsx scripts/analyze-logs.ts"
 	},
 	"bin": {
 		"pair": "./dist/index.js"

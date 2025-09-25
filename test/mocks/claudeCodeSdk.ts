@@ -214,8 +214,9 @@ export const CommonScenarios = {
 	navigatorComplete: (): MockScenario => ({
 		name: "navigator-complete",
 		messages: [
-			MockMessageHelpers.assistantToolUse("mcp__navigator__navigatorComplete", {
-				summary: "Task completed successfully - all features implemented and tested",
+			MockMessageHelpers.assistantToolUse("mcp__navigator__navigatorCodeReview", {
+				comment: "Task completed successfully - all features implemented and tested",
+				pass: true,
 			}),
 			MockMessageHelpers.toolResult("tool-123", { content: [] }),
 			MockMessageHelpers.result(),

@@ -5,17 +5,12 @@ import type {
 	EmbeddedAgentProvider,
 	StreamingAgentSession,
 } from "../providers/types.js";
-import {
-	NavigatorSessionError,
-	PermissionDeniedError,
-	PermissionMalformedError,
-} from "../types/errors.js";
 import type {
 	PermissionOptions,
 	PermissionRequest,
 	PermissionResult,
 } from "../types/permission.js";
-import type { NavigatorCommand, NavigatorCommandType, Role } from "../types.js";
+import type { NavigatorCommand, Role } from "../types.js";
 import type { Logger } from "../utils/logger.js";
 import {
 	NAVIGATOR_TOOL_NAMES,
@@ -23,13 +18,14 @@ import {
 } from "../utils/mcpServers.js";
 import { TIMEOUT_CONFIG, waitForCondition } from "../utils/timeouts.js";
 import { toolTracker } from "../utils/toolTracking.js";
+import { PermissionCoordinator } from "./navigator/permissionCoordinator.js";
 import {
 	NAVIGATOR_CONTINUE_PROMPT_TEMPLATE,
 	NAVIGATOR_INITIAL_PROMPT_TEMPLATE,
 	NAVIGATOR_REVIEW_PROMPT_TEMPLATE,
 	NavigatorUtils,
-	type PermissionDecisionType,
 } from "./navigator/utils.js";
+import { normalizeMcpTool } from "./shared/toolUtils.js";
 
 /**
  * Navigator agent - monitors driver implementation and reviews code
@@ -46,8 +42,12 @@ export class Navigator extends EventEmitter {
 	private toolResults: Map<string, any> = new Map();
 
 	// Track permission-approval display state to avoid duplicate decisions
-	private inPermissionApproval = false;
-	private permissionDecisionShown = false;
+	// Track active permission requests to handle concurrent approvals
+	private activePermissionRequests = new Set<string>();
+	private permissionDecisionsShown = new Map<string, boolean>();
+
+	// New permission coordinator
+	private permissionCoordinator: PermissionCoordinator;
 	private currentReviewToolId?: string;
 
 	constructor(
@@ -60,6 +60,12 @@ export class Navigator extends EventEmitter {
 		private mcpServerUrl?: string,
 	) {
 		super();
+
+		// Initialize permission coordinator
+		this.permissionCoordinator = new PermissionCoordinator(
+			(request) => this.sendPermissionRequestToNavigator(request),
+			this.logger,
+		);
 	}
 
 	/**
@@ -101,6 +107,13 @@ export class Navigator extends EventEmitter {
 			// Ensure a single streaming session
 			await this.ensureStreamingQuery();
 
+			if (isReviewRequested) {
+				// Clear all permission state when review is requested
+				this.activePermissionRequests.clear();
+				this.permissionDecisionsShown.clear();
+				this.currentReviewToolId = undefined;
+			}
+
 			if (!this.sessionId) {
 				const prompt = NAVIGATOR_INITIAL_PROMPT_TEMPLATE.replace(
 					"{originalTask}",
@@ -119,6 +132,12 @@ export class Navigator extends EventEmitter {
 				await this.waitForNoPendingTools();
 				this.inputStream?.pushText(prompt);
 			}
+			// Check for immediate completion commands first, then wait for batch
+			const immediateCompletion = this.checkForCompletionCommands();
+			if (immediateCompletion.length > 0) {
+				return immediateCompletion;
+			}
+
 			// Wait for end-of-batch to avoid losing later commands (e.g., CodeReview pass)
 			const cmds = await this.waitForBatchCommands();
 			return cmds && cmds.length > 0 ? cmds : null;
@@ -141,9 +160,25 @@ export class Navigator extends EventEmitter {
 	 * Check if command indicates session should end
 	 */
 	static shouldEndSession(command: NavigatorCommand): boolean {
-		if (command.type === "complete") return true;
-		if (command.type === "code_review" && command.pass === true) return true;
-		return false;
+		return command.type === "code_review" && command.pass === true;
+	}
+
+	static coerceReviewCommand(command: NavigatorCommand): NavigatorCommand {
+		if (command.type === "approve") {
+			return {
+				...command,
+				type: "code_review",
+				pass: true,
+			};
+		}
+		if (command.type === "deny") {
+			return {
+				...command,
+				type: "code_review",
+				pass: false,
+			};
+		}
+		return command;
 	}
 
 	/**
@@ -260,116 +295,80 @@ export class Navigator extends EventEmitter {
 	}
 
 	/**
-	 * Review a permission request and return approval or throw explicit error
+	 * Review a permission request using the new coordinator-based approach
 	 */
 	public async reviewPermission(
 		request: PermissionRequest,
 		options: PermissionOptions = {},
 	): Promise<PermissionResult> {
-		const { signal } = options;
+		// Ensure request has an ID
+		const requestId = request.requestId || crypto.randomUUID();
+		const requestWithId = { ...request, requestId };
 
-		signal?.throwIfAborted();
+		// Store tool ID for review tracking
+		this.currentReviewToolId = request.toolId;
+		this.activePermissionRequests.add(requestId);
+		this.permissionDecisionsShown.set(requestId, false);
 
-		// Get the tool ID if provided
-		this.currentReviewToolId = (request as any).toolId;
+		// Associate permission request ID with tool ID if we have both
+		if (request.toolId && requestId) {
+			toolTracker.associatePermissionRequest(request.toolId, requestId);
+		}
 
+		try {
+			// Use the permission coordinator
+			const result = await this.permissionCoordinator.requestPermission(
+				requestWithId,
+				options,
+			);
+
+			// Record review result if we have a tool ID
+			if (this.currentReviewToolId) {
+				toolTracker.recordReview(
+					this.currentReviewToolId,
+					result.allowed,
+					result.allowed ? result.comment : result.reason,
+				);
+			}
+
+			return result;
+		} finally {
+			this.resetPermissionState(requestId);
+		}
+	}
+
+	/**
+	 * Send permission request to the navigator (called by permission coordinator)
+	 */
+	private resetPermissionState(requestId?: string): void {
+		if (requestId) {
+			this.activePermissionRequests.delete(requestId);
+			this.permissionDecisionsShown.delete(requestId);
+		}
+		// Reset current review tool ID if no active requests
+		if (this.activePermissionRequests.size === 0) {
+			this.currentReviewToolId = undefined;
+		}
+	}
+
+	private async sendPermissionRequestToNavigator(
+		request: PermissionRequest,
+	): Promise<void> {
 		const toolDetails = `Tool: ${request.toolName}\nInput: ${JSON.stringify(request.input, null, 2)}`;
 		const strictCore = `CRITICAL: This is a PERMISSION REQUEST. You MUST respond with EXACTLY ONE of these MCP tool calls:
-- mcp__navigator__navigatorApprove (if you approve this specific edit)
-- mcp__navigator__navigatorDeny (if you reject this specific edit)
+- mcp__navigator__navigatorApprove (if you approve this specific edit${request.requestId ? `, include requestId: "${request.requestId}"` : ""})
+- mcp__navigator__navigatorDeny (if you reject this specific edit${request.requestId ? `, include requestId: "${request.requestId}"` : ""})
 
-DO NOT call mcp__navigator__navigatorComplete or mcp__navigator__navigatorCodeReview for permission requests.`;
+DO NOT call mcp__navigator__navigatorCodeReview for permission requests.`;
 
 		const header =
 			!this.sessionId && this.plan && this.originalTask
 				? `[CONTEXT] You are the navigator in our pair coding session. I'm implementing the plan.\nTask: ${this.originalTask}\nPlan:\n${this.plan}\n\nWhen I ask for permission to edit files, respond only with MCP decision tools as instructed below. Do not write prose.\n\n[PERMISSION REQUEST]\nMy actions transcript (since last approval):\n${request.driverTranscript}\n\n${toolDetails}\n\n${strictCore}`
 				: `[PERMISSION REQUEST]\nMy actions transcript (since last approval):\n${request.driverTranscript}\n\n${toolDetails}\n\n${strictCore}`;
 
-		this.inPermissionApproval = true;
-		this.permissionDecisionShown = false;
-
-		try {
-			await this.ensureStreamingQuery();
-			await this.waitForNoPendingTools();
-
-			signal?.throwIfAborted();
-
-			this.inputStream?.pushText(header);
-
-			const result = await this.waitForPermissionDecision();
-
-			signal?.throwIfAborted();
-
-			const decision = this.extractPermissionDecision(result.commands);
-
-			if (decision.type === "approve") {
-				// Record review result if we have a tool ID
-				if (this.currentReviewToolId) {
-					toolTracker.recordReview(
-						this.currentReviewToolId,
-						true,
-						decision.comment,
-					);
-				}
-				return {
-					allowed: true,
-					updatedInput: request.input,
-					comment: decision.comment,
-				};
-			}
-
-			if (decision.type === "deny") {
-				// Record review result if we have a tool ID
-				if (this.currentReviewToolId) {
-					toolTracker.recordReview(
-						this.currentReviewToolId,
-						false,
-						decision.comment,
-					);
-				}
-				return {
-					allowed: false,
-					reason: decision.comment || "Navigator denied permission",
-				};
-			}
-
-			throw new PermissionMalformedError("Navigator provided invalid decision");
-		} catch (err) {
-			if (
-				err instanceof PermissionDeniedError ||
-				err instanceof PermissionMalformedError
-			) {
-				throw err;
-			}
-			throw new NavigatorSessionError(
-				err instanceof Error ? err.message : String(err),
-			);
-		} finally {
-			this.inPermissionApproval = false;
-			this.permissionDecisionShown = false;
-			this.currentReviewToolId = undefined;
-		}
-	}
-
-	private extractPermissionDecision(commands: NavigatorCommand[]): {
-		type: PermissionDecisionType;
-		comment?: string;
-	} {
-		for (const cmd of commands) {
-			if (cmd.type === "approve") {
-				return { type: "approve", comment: cmd.comment };
-			}
-			if (cmd.type === "deny") {
-				return { type: "deny", comment: cmd.comment };
-			}
-		}
-		return { type: "none" };
-	}
-
-	private async waitForPermissionDecision(): Promise<{
-		commands: NavigatorCommand[];
-	}> {
-		return this.waitForBatchCommands().then((commands) => ({ commands }));
+		await this.ensureStreamingQuery();
+		await this.waitForNoPendingTools();
+		this.inputStream?.pushText(header);
 	}
 
 	private async processMessages() {
@@ -403,19 +402,58 @@ DO NOT call mcp__navigator__navigatorComplete or mcp__navigator__navigatorCodeRe
 									this.logger.logEvent("NAVIGATOR_TOOL_MISSING_NAME", {
 										item: JSON.stringify(item),
 									});
-									console.warn("Navigator: tool_use item missing name:", item);
 									continue;
 								}
 								const tname = item.name;
 								const isDecision = Navigator.isDecisionTool(tname);
 								let allowEmit = true;
-								if (this.inPermissionApproval) {
+
+								// Extract requestId from tool input if it's an approval/denial tool
+								const requestId = (item.input as any)?.requestId;
+
+								if (this.activePermissionRequests.size > 0) {
+									// We have active permission requests
 									if (isDecision) {
-										// Only emit the first decision tool line per approval window
-										allowEmit = !this.permissionDecisionShown;
-										this.permissionDecisionShown = true;
+										// Check if this decision corresponds to an active permission request
+										if (
+											requestId &&
+											this.activePermissionRequests.has(requestId)
+										) {
+											// This decision is for an active request - check if we've shown it already
+											const alreadyShown =
+												this.permissionDecisionsShown.get(requestId);
+											allowEmit = !alreadyShown;
+											if (!alreadyShown) {
+												this.permissionDecisionsShown.set(requestId, true);
+											}
+										} else if (
+											!requestId &&
+											this.activePermissionRequests.size === 1
+										) {
+											// Backward compatibility: no requestId but only one active request
+											const activeRequestId = Array.from(
+												this.activePermissionRequests,
+											)[0];
+											const alreadyShown =
+												this.permissionDecisionsShown.get(activeRequestId);
+											allowEmit = !alreadyShown;
+											if (!alreadyShown) {
+												this.permissionDecisionsShown.set(
+													activeRequestId,
+													true,
+												);
+											}
+										} else {
+											// Decision doesn't match any active request
+											allowEmit = false;
+										}
 									} else if (tname === "mcp__navigator__navigatorCodeReview") {
 										// Do not emit CodeReview during permission approvals
+										allowEmit = false;
+									}
+								} else {
+									// No active permission requests - block approve/deny tools
+									if (Navigator.isApprovalDenialTool(tname)) {
 										allowEmit = false;
 									}
 								}
@@ -494,6 +532,9 @@ DO NOT call mcp__navigator__navigatorComplete or mcp__navigator__navigatorCodeRe
 										);
 										if (cmd) {
 											this.pendingCommands.push(cmd);
+
+											// For completion or passing review commands, ensure they're delivered on next processDriverMessage call
+											// Don't deliver immediately as there might be no resolver waiting
 										}
 										// Once processed, drop the stored tool data
 										this.toolResults.delete(tid);
@@ -509,6 +550,14 @@ DO NOT call mcp__navigator__navigatorComplete or mcp__navigator__navigatorCodeRe
 				} else if (message.type === "result") {
 					// Some providers emit a "result" sentinel when a batch is complete
 					this.deliverPendingCommandsIfReady(true);
+
+					// If we have active permission requests but no decision tools were received, it's malformed
+					if (
+						this.activePermissionRequests.size > 0 &&
+						this.pendingCommands.length === 0
+					) {
+						this.permissionCoordinator.handleMalformedResponse();
+					}
 				}
 			}
 		} catch (err) {
@@ -518,6 +567,33 @@ DO NOT call mcp__navigator__navigatorComplete or mcp__navigator__navigatorCodeRe
 		}
 	}
 
+	/**
+	 * Check for completion commands that are ready to be delivered immediately
+	 */
+	private checkForCompletionCommands(): NavigatorCommand[] {
+		const passingReviews = this.pendingCommands.filter(
+			(cmd) => cmd.type === "code_review" && cmd.pass === true,
+		);
+
+		if (passingReviews.length > 0) {
+			this.pendingCommands = this.pendingCommands.filter(
+				(cmd) => !(cmd.type === "code_review" && cmd.pass === true),
+			);
+
+			this.logger.logEvent("NAVIGATOR_IMMEDIATE_COMPLETION", {
+				commandCount: passingReviews.length,
+				commands: passingReviews.map((cmd) => ({
+					type: cmd.type,
+					comment: cmd.comment,
+				})),
+			});
+
+			return passingReviews;
+		}
+
+		return [];
+	}
+
 	private waitForBatchCommands(): Promise<NavigatorCommand[]> {
 		return new Promise((resolve) => {
 			this.batchResolvers.push(resolve);
@@ -525,10 +601,63 @@ DO NOT call mcp__navigator__navigatorComplete or mcp__navigator__navigatorCodeRe
 	}
 
 	private deliverPendingCommandsIfReady(force = false): void {
-		if (this.pendingTools.size > 0) return;
-		if (this.pendingCommands.length === 0 && !force) return;
+		// Check if we have any passing code review commands that should be delivered immediately
+		const hasPassingReview = this.pendingCommands.some(
+			(cmd) => cmd.type === "code_review" && cmd.pass === true,
+		);
+
+		// Also check for decision commands that should be delivered immediately during reviews
+		const hasDecisionCommand = this.pendingCommands.some(
+			(cmd) =>
+				cmd.type === "approve" ||
+				cmd.type === "deny" ||
+				cmd.type === "code_review",
+		);
+
+		// Debug logging
+		this.logger.logEvent("NAVIGATOR_DELIVERY_CHECK", {
+			pendingToolsCount: this.pendingTools.size,
+			pendingCommandsCount: this.pendingCommands.length,
+			hasPassingReview,
+			hasDecisionCommand,
+			force,
+			batchResolversCount: this.batchResolvers.length,
+			commands: this.pendingCommands.map((cmd) => ({
+				type: cmd.type,
+				pass: cmd.pass,
+			})),
+		});
+
+		// Deliver commands if:
+		// 1. No pending tools (normal case)
+		// 2. Force delivery (result message)
+		// 3. Has completion command (immediate delivery)
+		// 4. Has decision command (immediate delivery for reviews)
+		if (
+			this.pendingTools.size > 0 &&
+			!force &&
+			!hasPassingReview &&
+			!hasDecisionCommand
+		) {
+			this.logger.logEvent("NAVIGATOR_DELIVERY_BLOCKED_PENDING_TOOLS", {
+				pendingToolsCount: this.pendingTools.size,
+			});
+			return;
+		}
+		if (this.pendingCommands.length === 0 && !force) {
+			this.logger.logEvent("NAVIGATOR_DELIVERY_BLOCKED_NO_COMMANDS", {});
+			return;
+		}
+
 		const resolver = this.batchResolvers.shift();
-		if (!resolver) return;
+		if (!resolver) {
+			this.logger.logEvent("NAVIGATOR_DELIVERY_BLOCKED_NO_RESOLVER", {
+				pendingCommandsCount: this.pendingCommands.length,
+				hasPassingReview,
+			});
+			return;
+		}
+
 		// Take only the commands accumulated for this batch
 		const commands = this.pendingCommands.slice();
 		this.pendingCommands = [];
@@ -538,6 +667,7 @@ DO NOT call mcp__navigator__navigatorComplete or mcp__navigator__navigatorCodeRe
 		} finally {
 			this.logger.logEvent("NAVIGATOR_BATCH_RESULT", {
 				commandCount: commands.length,
+				hasPassingReview,
 			});
 		}
 	}
@@ -594,42 +724,118 @@ DO NOT call mcp__navigator__navigatorComplete or mcp__navigator__navigatorCodeRe
 					comment: input.comment,
 					pass: input.pass,
 				};
-			case "mcp__navigator__navigatorComplete":
-				return { type: "complete", summary: input.summary };
-			case "mcp__navigator__navigatorApprove":
-				if (this.inPermissionApproval) {
-					return { type: "approve", comment: input.comment };
+			case "mcp__navigator__navigatorApprove": {
+				const requestId = input.requestId;
+				// Check if this approval is for an active permission request
+				const isActiveRequest = requestId
+					? this.activePermissionRequests.has(requestId)
+					: this.activePermissionRequests.size === 1; // Backward compatibility
+
+				if (isActiveRequest) {
+					const command = {
+						type: "approve" as const,
+						comment: input.comment,
+						requestId: input.requestId,
+					};
+					const handled =
+						this.permissionCoordinator.handleNavigatorDecision(command);
+					if (handled) {
+						// Clean up the specific request ID if provided
+						if (requestId) {
+							this.resetPermissionState(requestId);
+						} else if (this.activePermissionRequests.size === 1) {
+							// Backward compatibility: clear the single active request
+							const activeRequestId = Array.from(
+								this.activePermissionRequests,
+							)[0];
+							this.resetPermissionState(activeRequestId);
+						}
+						return null;
+					}
+					this.logger.logEvent("NAVIGATOR_PERMISSION_DECISION_UNUSED", {});
+					if (requestId) {
+						this.resetPermissionState(requestId);
+					}
+					return Navigator.coerceReviewCommand(command);
 				}
-				return {
-					type: "code_review",
-					pass: true,
-					comment: input.comment ?? "Navigator approved the implementation.",
-				};
-			case "mcp__navigator__navigatorDeny":
-				if (this.inPermissionApproval) {
-					return { type: "deny", comment: input.comment };
+				// Approve tools outside permission flow should be ignored - only CodeReview should be used for session completion
+				this.logger.logEvent("NAVIGATOR_APPROVE_OUTSIDE_PERMISSION_IGNORED", {
+					comment: input.comment,
+					requestId,
+				});
+				return null;
+			}
+			case "mcp__navigator__navigatorDeny": {
+				const requestId = input.requestId;
+				// Check if this denial is for an active permission request
+				const isActiveRequest = requestId
+					? this.activePermissionRequests.has(requestId)
+					: this.activePermissionRequests.size === 1; // Backward compatibility
+
+				if (isActiveRequest) {
+					const command = {
+						type: "deny" as const,
+						comment: input.comment,
+						requestId: input.requestId,
+					};
+					const handled =
+						this.permissionCoordinator.handleNavigatorDecision(command);
+					if (handled) {
+						// Clean up the specific request ID if provided
+						if (requestId) {
+							this.resetPermissionState(requestId);
+						} else if (this.activePermissionRequests.size === 1) {
+							// Backward compatibility: clear the single active request
+							const activeRequestId = Array.from(
+								this.activePermissionRequests,
+							)[0];
+							this.resetPermissionState(activeRequestId);
+						}
+						return null;
+					}
+					this.logger.logEvent("NAVIGATOR_PERMISSION_DECISION_UNUSED", {});
+					if (requestId) {
+						this.resetPermissionState(requestId);
+					}
+					return Navigator.coerceReviewCommand(command);
 				}
-				return {
-					type: "code_review",
-					pass: false,
-					comment: input.comment ?? "Navigator flagged issues during review.",
-				};
+				// Deny tools outside permission flow should be ignored - only CodeReview should be used for session continuation
+				this.logger.logEvent("NAVIGATOR_DENY_OUTSIDE_PERMISSION_IGNORED", {
+					comment: input.comment,
+					requestId,
+				});
+				return null;
+			}
 			default:
 				return null;
 		}
 	}
 
 	private static normalizeNavigatorTool(toolName: string): string {
-		if (toolName.startsWith("mcp__navigator__")) {
-			return toolName;
-		}
-		if (toolName.startsWith("pair-navigator_")) {
-			return `mcp__navigator__${toolName.slice("pair-navigator_".length)}`;
-		}
-		return toolName;
+		return normalizeMcpTool(toolName, "navigator");
 	}
 
 	// No fallback text parsing — MCP tools only
+
+	public static normalizeDecisionCommand(
+		command: NavigatorCommand,
+	): NavigatorCommand {
+		if (command.type === "approve") {
+			return {
+				...command,
+				type: "code_review",
+				pass: true,
+			};
+		}
+		if (command.type === "deny") {
+			return {
+				...command,
+				type: "code_review",
+				pass: false,
+			};
+		}
+		return command;
+	}
 
 	private static isDecisionTool(name: string): boolean {
 		const normalized = Navigator.normalizeNavigatorTool(name);
@@ -640,8 +846,19 @@ DO NOT call mcp__navigator__navigatorComplete or mcp__navigator__navigatorCodeRe
 		);
 	}
 
+	private static isApprovalDenialTool(name: string): boolean {
+		const normalized = Navigator.normalizeNavigatorTool(name);
+		return (
+			normalized === "mcp__navigator__navigatorApprove" ||
+			normalized === "mcp__navigator__navigatorDeny"
+		);
+	}
+
 	public async stop(): Promise<void> {
 		try {
+			// Clean up permission coordinator
+			this.permissionCoordinator.cleanup();
+
 			if (this.streamingSession?.interrupt) {
 				await this.streamingSession.interrupt();
 			}

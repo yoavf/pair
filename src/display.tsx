@@ -331,17 +331,27 @@ export class InkDisplayManager {
 		const toolMessage = this.pendingToolDisplays.get(trackingId);
 
 		if (toolMessage) {
-			// Display the tool
-			this.appendMessage(toolMessage);
+			// Display the tool first
+			const toolTimestamp = toolMessage.timestamp ?? new Date();
+			const toolDisplayMessage: Message = {
+				...toolMessage,
+				timestamp: toolTimestamp,
+			};
+			this.appendMessage(toolDisplayMessage);
 
 			// Display the review result if available
 			if (review) {
+				const reviewTimestampCandidate = new Date();
+				const reviewTimestamp =
+					reviewTimestampCandidate.getTime() <= toolTimestamp.getTime()
+						? new Date(toolTimestamp.getTime() + 1)
+						: reviewTimestampCandidate;
 				const reviewMessage: Message = {
 					role: "system",
 					content: review.approved
 						? `✅ Approved${review.comment ? `: ${review.comment}` : ""}`
 						: `❌ Denied${review.comment ? `: ${review.comment}` : ""}`,
-					timestamp: new Date(),
+					timestamp: reviewTimestamp,
 					sessionRole: "navigator",
 					symbol: review.approved ? "✅" : "❌",
 					symbolColor: review.approved ? "green" : "red",
@@ -383,7 +393,7 @@ export class InkDisplayManager {
 
 		const titleMessage: Message = {
 			role: "system",
-			content: "✅ Task completed!",
+			content: "✅ Task completed!\n",
 			timestamp: new Date(),
 			sessionRole: "driver",
 			symbol: "",

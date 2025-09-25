@@ -14,11 +14,8 @@ import {
 	OpencodeStreamingSession,
 } from "./opencode/sessions.js";
 import type {
-	AgentNames,
 	ArchitectSessionConfig,
-	ModelConfig,
 	OpenCodeClient,
-	OpenCodeOptions,
 	OpenCodeProviderConfig,
 	RemoteMcpServerConfig,
 	ServerOptions,
@@ -186,6 +183,13 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 			sessionMcpServerUrl: this.normalizeMcpUrl(options.mcpServerUrl),
 		});
 		const cleanup = this.registerCleanup(resources.cleanup);
+		const includePartialMessages =
+			options.mcpRole === "driver"
+				? true
+				: options.includePartialMessages !== undefined
+					? options.includePartialMessages
+					: false;
+
 		const config: StreamingSessionConfig = {
 			role: options.mcpRole,
 			systemPrompt: options.systemPrompt,
@@ -196,7 +200,7 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 					: this.providerConfig.agents.navigator,
 			model: this.providerConfig.model,
 			canUseTool: options.canUseTool as ToolGuard | undefined,
-			includePartialMessages: false,
+			includePartialMessages,
 			diagnosticLogger: options.diagnosticLogger,
 		};
 		if (resolvedDirectory) {

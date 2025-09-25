@@ -44,22 +44,9 @@ const Footer: React.FC<Props> = ({
 	const terminalWidth = process.stdout.columns || 80;
 	const horizontalLine = "─".repeat(terminalWidth);
 
-	let line1 = "";
-	let line2 = "";
-
-	if (activity) {
-		// When there's activity, show it on the first line
-		line1 = activity;
-	} else if (providers && models) {
-		if (phase === "planning") {
-			// Planning phase: show architect only
-			line1 = `Architect: ${providers.architect} / ${formatModelName(models.architect)}`;
-		} else if (phase === "execution" || phase === "review") {
-			// Execution phase: show driver on line 1, navigator on line 2
-			line1 = `Driver: ${providers.driver} / ${formatModelName(models.driver)}`;
-			line2 = `Navigator: ${providers.navigator} / ${formatModelName(models.navigator)}`;
-		}
-	}
+	const isApprovalWaiting = activity?.startsWith(
+		"Awaiting navigator approval:",
+	);
 
 	return (
 		<Box flexDirection="column">
@@ -69,12 +56,40 @@ const Footer: React.FC<Props> = ({
 			</Text>
 			{/* First line: Driver or Architect */}
 			<Box paddingX={1} justifyContent="space-between" marginTop={-1}>
-				<Text
-					backgroundColor={absRightColor || undefined}
-					color={absRightColor ? "black" : "gray"}
-				>
-					{line1 || " "}
-				</Text>
+				<Box>
+					{providers && models && phase === "planning" && (
+						<Text
+							backgroundColor={absRightColor || undefined}
+							color={absRightColor ? "black" : "gray"}
+						>
+							<Text bold>Architect</Text>: {providers.architect} /{" "}
+							{formatModelName(models.architect)}
+						</Text>
+					)}
+					{providers &&
+						models &&
+						(phase === "execution" || phase === "review") && (
+							<Text
+								backgroundColor={absRightColor || undefined}
+								color={absRightColor ? "black" : "gray"}
+							>
+								<Text bold>Driver</Text>: {providers.driver} /{" "}
+								{formatModelName(models.driver)}
+							</Text>
+						)}
+					{(!providers ||
+						!models ||
+						(phase !== "planning" &&
+							phase !== "execution" &&
+							phase !== "review")) && (
+						<Text
+							backgroundColor={absRightColor || undefined}
+							color={absRightColor ? "black" : "gray"}
+						>
+							Something went wrong - no agent info available.
+						</Text>
+					)}
+				</Box>
 				<Text
 					backgroundColor={absRightColor || undefined}
 					color={absRightColor ? "black" : "gray"}
@@ -85,13 +100,27 @@ const Footer: React.FC<Props> = ({
 				</Text>
 			</Box>
 			{/* Second line: Navigator (if available) */}
-			{line2 && (
+			{providers &&
+				models &&
+				(phase === "execution" || phase === "review") &&
+				!isApprovalWaiting && (
+					<Box paddingX={1} marginTop={0}>
+						<Text
+							backgroundColor={absRightColor || undefined}
+							color={absRightColor ? "black" : "gray"}
+						>
+							<Text bold>Navigator</Text>: {providers.navigator} /{" "}
+							{formatModelName(models.navigator)}
+						</Text>
+					</Box>
+				)}
+			{isApprovalWaiting && (
 				<Box paddingX={1} marginTop={0}>
 					<Text
 						backgroundColor={absRightColor || undefined}
 						color={absRightColor ? "black" : "gray"}
 					>
-						{line2}
+						{activity}
 					</Text>
 				</Box>
 			)}

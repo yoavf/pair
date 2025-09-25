@@ -50,8 +50,9 @@ describe('NavigatorUtils', () => {
   describe('shouldEndSession', () => {
     it('should return true for complete command', () => {
       const command: NavigatorCommand = {
-        type: 'complete',
-        summary: 'Task completed',
+        type: 'code_review',
+        comment: 'Task completed',
+        pass: true,
       };
 
       expect(NavigatorUtils.shouldEndSession(command)).toBe(true);
@@ -125,9 +126,9 @@ describe('NavigatorUtils', () => {
       expect(NavigatorUtils.normalizeNavigatorTool('code_review')).toBe('mcp__navigator__navigatorCodeReview');
     });
 
-    it('should normalize complete variants', () => {
-      expect(NavigatorUtils.normalizeNavigatorTool('complete')).toBe('mcp__navigator__navigatorComplete');
-      expect(NavigatorUtils.normalizeNavigatorTool('navigator_complete')).toBe('mcp__navigator__navigatorComplete');
+    it('should normalize complete variants to review', () => {
+      expect(NavigatorUtils.normalizeNavigatorTool('complete')).toBe('complete');
+      expect(NavigatorUtils.normalizeNavigatorTool('navigator_complete')).toBe('navigator_complete');
     });
 
     it('should return original tool name if no match', () => {
