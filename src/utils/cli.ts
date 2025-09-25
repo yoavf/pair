@@ -5,6 +5,7 @@
 import { Command } from "commander";
 import { agentProviderFactory } from "../providers/factory.js";
 import { type AppConfig, loadConfig, validateConfig } from "./config.js";
+import { getTaskFromUser } from "./taskInput.js";
 import {
 	validateAndReadPromptFile,
 	validateAndSanitizePath,
@@ -36,7 +37,7 @@ function createProgram(): Command {
 		.name("pair")
 		.description("AI pair programming CLI that orchestrates coding agents")
 		.version(getVersion())
-		.requiredOption("-p, --prompt <text>", "Task prompt to implement")
+		.option("-p, --prompt <text>", "Task prompt to implement")
 		.option("-d, --dir <path>", "Project directory", process.cwd())
 		.option("-f, --file <file>", "Read prompt from file (overrides --prompt)")
 		.option("--architect <provider>", "Architect provider", "claude-code")
@@ -90,8 +91,12 @@ export async function parseCliArgs(args: string[]): Promise<ParsedCliArgs> {
 	let task: string;
 	if (options.file) {
 		task = validateAndReadPromptFile(options.file);
-	} else {
+	} else if (options.prompt) {
 		task = validatePrompt(options.prompt, config.maxPromptLength);
+	} else {
+		// No prompt provided, ask user for input
+		task = await getTaskFromUser();
+		task = validatePrompt(task, config.maxPromptLength);
 	}
 
 	// Final validation after CLI overrides
