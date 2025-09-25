@@ -280,7 +280,12 @@ export class InkDisplayManager {
 		// If this is a reviewable tool with tracking ID, wait for review
 		if (trackingId && toolTracker.isReviewableTool(tool)) {
 			this.pendingToolDisplays.set(trackingId, message);
-			this.waitForReviewAndDisplay(trackingId);
+			this.waitForReviewAndDisplay(trackingId).catch((error) => {
+				console.error("Review display error:", error);
+				// Fallback: display tool without review
+				this.appendMessage(message);
+				this.pendingToolDisplays.delete(trackingId);
+			});
 		} else {
 			// Display immediately for non-reviewable tools
 			this.appendMessage(message);
