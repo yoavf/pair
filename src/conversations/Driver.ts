@@ -8,7 +8,7 @@ import { isAllToolsEnabled, isFileModificationTool } from "../types/core.js";
 import type { DriverCommand, Role } from "../types.js";
 import type { Logger } from "../utils/logger.js";
 import { DRIVER_TOOL_NAMES, driverMcpServer } from "../utils/mcpServers.js";
-import { TIMEOUT_CONFIG, TimeoutManager } from "../utils/timeouts.js";
+import { TIMEOUT_CONFIG, waitForCondition } from "../utils/timeouts.js";
 import { toolTracker } from "../utils/toolTracking.js";
 
 /**
@@ -491,7 +491,7 @@ export class Driver extends EventEmitter {
 	private waitForNoPendingTools(
 		timeoutMs = TIMEOUT_CONFIG.TOOL_COMPLETION,
 	): Promise<void> {
-		return TimeoutManager.createWaiterTimeout(
+		return waitForCondition(
 			() => this.pendingTools.size === 0,
 			async () => {
 				this.logger.logEvent("DRIVER_PENDING_TOOL_TIMEOUT", {

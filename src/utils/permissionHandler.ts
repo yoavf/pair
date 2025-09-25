@@ -12,7 +12,7 @@ import {
 } from "../types/errors.js";
 import type { PermissionRequest } from "../types/permission.js";
 import type { Logger } from "./logger.js";
-import { TIMEOUT_CONFIG, TimeoutManager } from "./timeouts.js";
+import { createTimeout, TIMEOUT_CONFIG } from "./timeouts.js";
 
 export class PermissionHandler {
 	constructor(
@@ -25,7 +25,7 @@ export class PermissionHandler {
 		request: PermissionRequest,
 		timeoutMs = TIMEOUT_CONFIG.PERMISSION_REQUEST,
 	) {
-		const { controller, cleanup } = TimeoutManager.createTimeout(timeoutMs);
+		const { controller, cleanup } = createTimeout(timeoutMs);
 
 		try {
 			const result = await this.navigator.reviewPermission(request, {
