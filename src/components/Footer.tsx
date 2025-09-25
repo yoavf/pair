@@ -1,7 +1,12 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { hasAbsolutelyRightPhrase, useAbsRight } from "../hooks/useAbsRight.js";
-import type { AgentProviders, SessionPhase } from "../types.js";
+import type {
+	AgentConfiguration,
+	AgentProviders,
+	SessionPhase,
+} from "../types.js";
+import { formatModelName } from "../utils/modelDisplay.js";
 
 interface Props {
 	onExit: () => void;
@@ -11,6 +16,7 @@ interface Props {
 	onCtrlC?: () => void;
 	allMessages?: string; // Combined content of recent messages for detection
 	providers?: AgentProviders;
+	models?: AgentConfiguration;
 }
 
 const Footer: React.FC<Props> = ({
@@ -21,6 +27,7 @@ const Footer: React.FC<Props> = ({
 	onCtrlC,
 	allMessages = "",
 	providers,
+	models,
 }) => {
 	const hasPhrase = hasAbsolutelyRightPhrase(allMessages);
 	const absRightColor = useAbsRight(hasPhrase);
@@ -37,20 +44,30 @@ const Footer: React.FC<Props> = ({
 	const terminalWidth = process.stdout.columns || 80;
 	const horizontalLine = "─".repeat(terminalWidth);
 
-	const segments: string[] = [];
+	const providerSegments: string[] = [];
+	const modelSegments: string[] = [];
+
 	if (activity) {
-		segments.push(activity);
-	} else if (providers) {
+		// When there's activity, show it instead of provider/model info
+		providerSegments.push(activity);
+	} else if (providers && models) {
 		if (phase === "planning") {
-			segments.push(`Architect: ${providers.architect}`);
+			// Planning phase: show architect only
+			providerSegments.push(`Architect: ${providers.architect}`);
+			modelSegments.push(`Model: ${formatModelName(models.architect)}`);
 		} else if (phase === "execution" || phase === "review") {
-			segments.push(
+			// Execution phase: show navigator and driver
+			providerSegments.push(
 				`Navigator: ${providers.navigator} | Driver: ${providers.driver}`,
+			);
+			modelSegments.push(
+				`Models: ${formatModelName(models.navigator)} | ${formatModelName(models.driver)}`,
 			);
 		}
 	}
 
-	const leftText = segments.join("  •  ") || " ";
+	const providerText = providerSegments.join("  •  ") || " ";
+	const modelText = modelSegments.join("  •  ");
 
 	return (
 		<Box flexDirection="column">
@@ -58,12 +75,13 @@ const Footer: React.FC<Props> = ({
 			<Text backgroundColor={absRightColor || undefined} color="white">
 				{" ".repeat(terminalWidth)}
 			</Text>
+			{/* First line: Provider information */}
 			<Box paddingX={1} justifyContent="space-between" marginTop={-1}>
 				<Text
 					backgroundColor={absRightColor || undefined}
 					color={absRightColor ? "black" : "gray"}
 				>
-					{leftText}
+					{providerText}
 				</Text>
 				<Text
 					backgroundColor={absRightColor || undefined}
@@ -74,6 +92,17 @@ const Footer: React.FC<Props> = ({
 						: "Press Ctrl+C to quit"}
 				</Text>
 			</Box>
+			{/* Second line: Model information (if available) */}
+			{modelText && (
+				<Box paddingX={1} marginTop={0}>
+					<Text
+						backgroundColor={absRightColor || undefined}
+						color={absRightColor ? "black" : "gray"}
+					>
+						{modelText}
+					</Text>
+				</Box>
+			)}
 		</Box>
 	);
 };

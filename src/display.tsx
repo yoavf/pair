@@ -16,7 +16,18 @@ interface Props {
 }
 
 const _InkApp: React.FC<Props> = ({ projectPath, initialTask, onExit }) => {
-	const { state } = useMessages(projectPath, initialTask);
+	// Default models configuration for standalone usage
+	const defaultModels = {
+		architect: { provider: "claude-code", model: "opus-4.1" },
+		navigator: { provider: "claude-code", model: undefined },
+		driver: { provider: "claude-code", model: undefined },
+	};
+	const { state } = useMessages(
+		projectPath,
+		initialTask,
+		undefined,
+		defaultModels,
+	);
 
 	return <PairProgrammingApp state={state} onExit={onExit} />;
 };
@@ -52,8 +63,13 @@ export class InkDisplayManager {
 				navigator: config.navigatorConfig.provider,
 				driver: config.driverConfig.provider,
 			};
+			const models = {
+				architect: config.architectConfig,
+				navigator: config.navigatorConfig,
+				driver: config.driverConfig,
+			};
 			const { state, addMessage, updateActivity, setPhase, setQuitState } =
-				useMessages(projectPath, initialTask, providers);
+				useMessages(projectPath, initialTask, providers, models);
 
 			// Expose methods to the class instance
 			useEffect(() => {
