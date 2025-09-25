@@ -102,7 +102,7 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 			} else {
 				// No slash means incomplete configuration for OpenCode
 				throw new Error(
-					`OpenCode requires full model specification. Got: '${config.model}'. Expected format: 'provider/model' (e.g., 'openrouter/google/gemini-2.0-flash')`,
+					`OpenCode requires full model specification. Got: '${config.model}'. Expected format: 'provider/model' (e.g., 'openrouter/google/gemini-2.5-flash')`,
 				);
 			}
 		} else if (parsed.model?.providerId && parsed.model?.modelId) {
@@ -111,7 +111,7 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 			modelId = parsed.model.modelId;
 		} else {
 			throw new Error(
-				"OpenCode provider requires model configuration. Please specify model with format 'provider/model' (e.g., '--architect opencode/openrouter/google/gemini-2.0-flash')",
+				"OpenCode provider requires model configuration. Please specify model with format 'provider/model' (e.g., '--architect opencode/openrouter/google/gemini-2.5-flash')",
 			);
 		}
 

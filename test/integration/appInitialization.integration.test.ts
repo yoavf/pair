@@ -105,9 +105,9 @@ describe('PairApp Initialization', () => {
   test('should initialize with OpenCode provider without errors', () => {
     const openCodeConfig: AppConfig = {
       ...mockConfig,
-      architectConfig: { provider: 'opencode', model: 'openrouter/google/gemini-2.0-flash' },
-      navigatorConfig: { provider: 'opencode', model: 'openrouter/google/gemini-2.0-flash' },
-      driverConfig: { provider: 'opencode', model: 'openrouter/google/gemini-2.0-flash' },
+      architectConfig: { provider: 'opencode', model: 'openrouter/google/gemini-2.5-flash' },
+      navigatorConfig: { provider: 'opencode', model: 'openrouter/google/gemini-2.5-flash' },
+      driverConfig: { provider: 'opencode', model: 'openrouter/google/gemini-2.5-flash' },
     };
 
     // Should not throw during construction

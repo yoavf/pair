@@ -104,7 +104,7 @@ export async function parseCliArgs(args: string[]): Promise<ParsedCliArgs> {
 				i++;
 			}
 		} else if (arg.startsWith("--prompt=")) {
-			initialPrompt = arg.substring("--prompt=".length);
+			initialPrompt = arg.split("=")[1];
 		} else if (arg === "--file" || arg === "-f") {
 			if (i + 1 < args.length) {
 				promptFile = args[i + 1];
@@ -118,42 +118,42 @@ export async function parseCliArgs(args: string[]): Promise<ParsedCliArgs> {
 				i++;
 			}
 		} else if (arg.startsWith("--architect=")) {
-			config.architectConfig.provider = arg.substring("--architect=".length);
+			config.architectConfig.provider = arg.split("=")[1];
 		} else if (arg === "--architect-model") {
 			if (i + 1 < args.length) {
 				config.architectConfig.model = args[i + 1];
 				i++;
 			}
 		} else if (arg.startsWith("--architect-model=")) {
-			config.architectConfig.model = arg.substring("--architect-model=".length);
+			config.architectConfig.model = arg.split("=")[1];
 		} else if (arg === "--navigator") {
 			if (i + 1 < args.length) {
 				config.navigatorConfig.provider = args[i + 1];
 				i++;
 			}
 		} else if (arg.startsWith("--navigator=")) {
-			config.navigatorConfig.provider = arg.substring("--navigator=".length);
+			config.navigatorConfig.provider = arg.split("=")[1];
 		} else if (arg === "--navigator-model") {
 			if (i + 1 < args.length) {
 				config.navigatorConfig.model = args[i + 1];
 				i++;
 			}
 		} else if (arg.startsWith("--navigator-model=")) {
-			config.navigatorConfig.model = arg.substring("--navigator-model=".length);
+			config.navigatorConfig.model = arg.split("=")[1];
 		} else if (arg === "--driver") {
 			if (i + 1 < args.length) {
 				config.driverConfig.provider = args[i + 1];
 				i++;
 			}
 		} else if (arg.startsWith("--driver=")) {
-			config.driverConfig.provider = arg.substring("--driver=".length);
+			config.driverConfig.provider = arg.split("=")[1];
 		} else if (arg === "--driver-model") {
 			if (i + 1 < args.length) {
 				config.driverConfig.model = args[i + 1];
 				i++;
 			}
 		} else if (arg.startsWith("--driver-model=")) {
-			config.driverConfig.model = arg.substring("--driver-model=".length);
+			config.driverConfig.model = arg.split("=")[1];
 		} else if (!arg.startsWith("-")) {
 			if (projectPath === process.cwd()) {
 				projectPath = arg;
