@@ -18,7 +18,7 @@ Pair is a CLI utility to run coding agents in pair programming mode.
 - `npm start` — Run compiled CLI (`node dist/index.js`).
 - `npm run dev` — Run in watchless dev using `tsx` (no build).
 - `npm run watch` — Type-check and rebuild on file changes.
-- Example: `npm run dev -- --path . -p "Add logging"`.
+- Example: `npm run dev -- --dir . -p "Add logging"`.
 
 ## Architecture & Agent Behavior
 - Architect (plan): Creates the initial plan in a non-interactive planning phase, then exits after returning plan via ExitPlanMode.
@@ -62,7 +62,7 @@ Pair is a CLI utility to run coding agents in pair programming mode.
 ## CLI Usage
 - Command: `pair` (no longer requires `claude` subcommand)
 - Basic usage: `pair -p "your prompt"`
-- Path specification: `pair --path /your/project -p "your prompt"`
+- Path specification: `pair --dir /your/project -p "your prompt"`
 - File input: `pair -f prompt.txt`
 - Provider/model configuration:
   - `--architect <provider>` and `--architect-model <model>`

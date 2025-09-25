@@ -40,10 +40,10 @@ npm link
 pair -p "Add user authentication"
 
 # Run with a prompt and specify project path
-pair --path ~/my-project -p "Add logout functionality"
+pair --dir ~/my-project -p "Add logout functionality"
 
 # Load prompt from file
-pair --path ~/my-project -f prompt.txt
+pair --dir ~/my-project -f prompt.txt
 pair -f tasks/feature-request.md
 
 # Use specific providers and models
@@ -52,7 +52,7 @@ pair -p "Refactor" --navigator opencode --navigator-model openrouter/google/gemi
 ```
 
 #### Available Options
-- `--path <path>`: Project directory path (default: current directory)
+- `--dir <path>`: Project directory path (default: current directory)
 - `-p, --prompt <text>`: Task prompt as text
 - `-f, --file <file>`: Load prompt from file (.txt, .md, .json, .yaml, .yml)
 - `--architect <provider>`: Set architect provider (claude-code, opencode)
@@ -68,7 +68,7 @@ pair -p "Refactor" --navigator opencode --navigator-model openrouter/google/gemi
 ```bash
 # Run in development mode
 npm run dev -- -p "Add logging"
-npm run dev -- --path ~/my-project -p "Add tests"
+npm run dev -- --dir ~/my-project -p "Add tests"
 ```
 
 ## Configuration
@@ -154,7 +154,7 @@ Example:
 LOG_LEVEL=debug npm run dev -- -p "Add tests"
 
 # Enable debug logging
-LOG_LEVEL=debug pair --path ~/my-project -p "Add tests"
+LOG_LEVEL=debug pair --dir ~/my-project -p "Add tests"
 
 # Disable sync status for clean recordings
 CLAUDE_PAIR_DISABLE_SYNC_STATUS=true pair -p "Add authentication"
@@ -164,14 +164,14 @@ CLAUDE_PAIR_DISABLE_SYNC_STATUS=true pair -p "Add authentication"
 ```bash
 # Give navigator more turns for complex tasks
 CLAUDE_PAIR_NAVIGATOR_MAX_TURNS=75 \
-  pair --path ~/my-project -p "Complex refactoring task"
+  pair --dir ~/my-project -p "Complex refactoring task"
 
 # Use different turn limits
 CLAUDE_PAIR_NAVIGATOR_MAX_TURNS=30 CLAUDE_PAIR_DRIVER_MAX_TURNS=10 \
-  pair --path ~/project -f task.md
+  pair --dir ~/project -f task.md
 
 # Use specific models for different roles
-pair --path ~/project -p "Complex architectural task" \
+pair --dir ~/project -p "Complex architectural task" \
   --architect claude-code --architect-model claude-opus-4-1-20250805 \
   --navigator opencode --navigator-model openrouter/google/gemini-2.5-flash
 
