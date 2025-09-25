@@ -8,6 +8,7 @@ import { useMessages } from "./hooks/useMessages.js";
 import type { Message, Role, SessionPhase } from "./types.js";
 import type { AppConfig } from "./utils/config.js";
 import { formatSystemLine } from "./utils/systemLine.js";
+import { toolTracker } from "./utils/toolTracking.js";
 
 interface Props {
 	projectPath: string;
@@ -16,7 +17,18 @@ interface Props {
 }
 
 const _InkApp: React.FC<Props> = ({ projectPath, initialTask, onExit }) => {
-	const { state } = useMessages(projectPath, initialTask);
+	// Default models configuration for standalone usage
+	const defaultModels = {
+		architect: { provider: "claude-code", model: "opus-4.1" },
+		navigator: { provider: "claude-code", model: undefined },
+		driver: { provider: "claude-code", model: undefined },
+	};
+	const { state } = useMessages(
+		projectPath,
+		initialTask,
+		undefined,
+		defaultModels,
+	);
 
 	return <PairProgrammingApp state={state} onExit={onExit} />;
 };
@@ -35,6 +47,7 @@ export class InkDisplayManager {
 	private syncTicker?: NodeJS.Timeout;
 	private config!: AppConfig;
 	private projectPath: string = process.cwd();
+	private pendingToolDisplays = new Map<string, Message>();
 
 	start(
 		projectPath: string,
@@ -48,12 +61,17 @@ export class InkDisplayManager {
 		// Create a wrapper component that exposes the hooks
 		const AppWrapper: React.FC = () => {
 			const providers = {
-				architect: config.architectProvider,
-				navigator: config.navigatorProvider,
-				driver: config.driverProvider,
+				architect: config.architectConfig.provider,
+				navigator: config.navigatorConfig.provider,
+				driver: config.driverConfig.provider,
+			};
+			const models = {
+				architect: config.architectConfig,
+				navigator: config.navigatorConfig,
+				driver: config.driverConfig,
 			};
 			const { state, addMessage, updateActivity, setPhase, setQuitState } =
-				useMessages(projectPath, initialTask, providers);
+				useMessages(projectPath, initialTask, providers, models);
 
 			// Expose methods to the class instance
 			useEffect(() => {
@@ -172,6 +190,8 @@ export class InkDisplayManager {
 
 	// biome-ignore lint/suspicious/noExplicitAny: Tool parameters from Claude Code SDK have varied structure
 	showToolUse(role: Role, tool: string, params?: any) {
+		const trackingId = params?.trackingId;
+		delete params?.trackingId; // Remove from params before processing
 		let content = tool;
 		let symbol: string | undefined;
 		let symbolColor: string | undefined;
@@ -256,7 +276,20 @@ export class InkDisplayManager {
 			symbol,
 			symbolColor,
 		};
-		this.appendMessage(message);
+
+		// If this is a reviewable tool with tracking ID, wait for review
+		if (trackingId && toolTracker.isReviewableTool(tool)) {
+			this.pendingToolDisplays.set(trackingId, message);
+			this.waitForReviewAndDisplay(trackingId).catch((error) => {
+				console.error("Review display error:", error);
+				// Fallback: display tool without review
+				this.appendMessage(message);
+				this.pendingToolDisplays.delete(trackingId);
+			});
+		} else {
+			// Display immediately for non-reviewable tools
+			this.appendMessage(message);
+		}
 	}
 
 	updateStatus(status: string) {
@@ -291,6 +324,37 @@ export class InkDisplayManager {
 			sessionRole: from,
 		};
 		this.appendMessage(message);
+	}
+
+	private async waitForReviewAndDisplay(trackingId: string) {
+		const review = await toolTracker.waitForReview(trackingId);
+		const toolMessage = this.pendingToolDisplays.get(trackingId);
+
+		if (toolMessage) {
+			// Display the tool
+			this.appendMessage(toolMessage);
+
+			// Display the review result if available
+			if (review) {
+				const reviewMessage: Message = {
+					role: "system",
+					content: review.approved
+						? `✅ Approved${review.comment ? `: ${review.comment}` : ""}`
+						: `❌ Denied${review.comment ? `: ${review.comment}` : ""}`,
+					timestamp: new Date(),
+					sessionRole: "navigator",
+					symbol: review.approved ? "✅" : "❌",
+					symbolColor: review.approved ? "green" : "red",
+				};
+				this.appendMessage(reviewMessage);
+			} else {
+				// Timeout - display without review
+				this.updateStatus("Review timeout - displaying tool without review");
+			}
+
+			this.pendingToolDisplays.delete(trackingId);
+			toolTracker.markDisplayed(trackingId);
+		}
 	}
 
 	showNavigatorNod(quote: string, reaction: string) {

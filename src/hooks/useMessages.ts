@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import type {
+	AgentConfiguration,
 	AgentProviders,
 	Message,
 	PairProgrammingState,
@@ -16,6 +17,7 @@ export const useMessages = (
 	projectPath: string,
 	initialTask: string,
 	providers: AgentProviders = UNKNOWN_PROVIDERS,
+	models: AgentConfiguration,
 ) => {
 	const [state, setState] = useState<PairProgrammingState>({
 		projectPath,
@@ -26,6 +28,7 @@ export const useMessages = (
 		phase: "planning",
 		quitState: "normal",
 		providers,
+		models,
 	});
 
 	const addMessage = useCallback((message: Message) => {

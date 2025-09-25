@@ -6,7 +6,7 @@ Pair is a CLI utility that orchestrates coding agents working together in a pair
 
 This tool creates a collaborative coding session with two agent instances working together.
 
-- The session starts with a **Planning** phase where a plan is formulated by the Navigator.
+- The session starts with a **Planning** phase where a plan is formulated by the Architect.
 - The plan is then passed to the Driver for **implementation**.
 - The Navigator acts in two moments only:
   - Approving/denying file modifications when the Driver requests an edit (Approve / Deny).
@@ -19,7 +19,7 @@ The Navigator stays otherwise silent; the Driver makes actual changes and progre
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd pair-claude
+cd pair
 
 # Install dependencies
 npm install
@@ -35,35 +35,40 @@ npm link
 
 ### Basic Usage
 
-Prefix `claude` with `pair`: `pair claude`, adding the following optional arguments:
-
 ```bash
-# Run with a prompt
-pair claude -p "Add user authentication"
+# Run with a prompt (uses Claude Code with default models)
+pair -p "Add user authentication"
 
 # Run with a prompt and specify project path
-pair claude --path ~/my-project -p "Add logout functionality"
+pair --path ~/my-project -p "Add logout functionality"
 
 # Load prompt from file
-pair claude --path ~/my-project -f prompt.txt
-pair claude -f tasks/feature-request.md
+pair --path ~/my-project -f prompt.txt
+pair -f tasks/feature-request.md
 
-# Alternative syntax with equals
-pair claude --path=~/my-project --prompt="Add authentication"
-pair claude --path=~/my-project --file=prompt.txt
+# Use specific providers and models
+pair -p "Add tests" --architect claude-code --architect-model opus-4.1
+pair -p "Refactor" --navigator opencode --navigator-model openrouter/google/gemini-2.5-flash
 ```
 
 #### Available Options
-- `--path`: Project directory path (default: current directory)
-- `-p, --prompt`: Task prompt as text
-- `-f, --file`: Load prompt from file (.txt, .md, .json, .yaml, .yml)
+- `--path <path>`: Project directory path (default: current directory)
+- `-p, --prompt <text>`: Task prompt as text
+- `-f, --file <file>`: Load prompt from file (.txt, .md, .json, .yaml, .yml)
+- `--architect <provider>`: Set architect provider (claude-code, opencode)
+- `--architect-model <model>`: Set architect model
+- `--navigator <provider>`: Set navigator provider
+- `--navigator-model <model>`: Set navigator model
+- `--driver <provider>`: Set driver provider
+- `--driver-model <model>`: Set driver model
 - `--version`: Show version information
+- `--help`: Show help message
 
 ### Development Usage
 ```bash
 # Run in development mode
-npm run dev -- claude -p "Add logging"
-npm run dev -- claude --path ~/my-project -p "Add tests"
+npm run dev -- -p "Add logging"
+npm run dev -- --path ~/my-project -p "Add tests"
 ```
 
 ## Configuration
@@ -75,39 +80,64 @@ You can customize behavior using environment variables:
 - `CLAUDE_PAIR_DRIVER_MAX_TURNS`: Maximum turns for driver (default: 20)
 - `CLAUDE_PAIR_MAX_PROMPT_LENGTH`: Maximum prompt length in characters (default: 10000)
 - `CLAUDE_PAIR_MAX_PROMPT_FILE_SIZE`: Maximum prompt file size in bytes (default: 102400 = 100KB)
-- `CLAUDE_PAIR_MODEL`: Claude model to use when the provider is Claude Code (default: uses CLI configuration)
 - `CLAUDE_PAIR_SESSION_HARD_LIMIT_MIN`: Hard execution time limit in minutes (default: 30)
 - `CLAUDE_PAIR_DISABLE_SYNC_STATUS`: Set to "true" to disable sync status updates in footer (useful for clean recordings)
 
 When the session hard limit is reached during execution, a short notice appears in the footer and both sessions are shut down gracefully.
 
-### Agent Providers
+### Agent Providers and Models
 
-Each role can target a different provider by setting:
+Each role (architect, navigator, driver) can use different providers and models:
 
-- `CLAUDE_PAIR_ARCHITECT_PROVIDER`
-- `CLAUDE_PAIR_NAVIGATOR_PROVIDER`
-- `CLAUDE_PAIR_DRIVER_PROVIDER`
+#### Available Providers
 
-Available values:
+- `claude-code` (default) - Uses Claude Code SDK
+- `opencode` - Uses OpenCode SDK
 
-- `claude-code` (default)
-- `opencode`
+#### Claude Code Models
+- Default: `claude-opus-4.1` for architect, Sonnet for navigator/driver
+- Can specify: `opus-4.1`, `sonnet`, etc.
 
-When using the OpenCode provider, make sure an OpenCode server is running and configure it with:
+#### OpenCode Models
+- **Required**: Must specify model in format `provider/model`
+- Examples: `openrouter/google/gemini-2.5-flash`, `openai/gpt-4`, `anthropic/claude-opus-4.1`
+
+#### Configuration Examples
+
+```bash
+# Default (Claude Code)
+pair -p "Add feature"
+
+# Mixed providers
+pair -p "Add tests" \
+  --architect opencode --architect-model openrouter/google/gemini-2.5-flash \
+  --navigator claude-code --navigator-model opus-4.1 \
+  --driver claude-code
+
+# All OpenCode
+pair -p "Refactor" \
+  --architect opencode --architect-model openai/gpt-4 \
+  --navigator opencode --navigator-model openrouter/anthropic/claude-opus-4.1 \
+  --driver opencode --driver-model openrouter/google/gemini-2.5-flash
+```
+
+#### OpenCode Configuration
+
+When using OpenCode, configure the server with:
 
 - `OPENCODE_BASE_URL` (defaults to `http://127.0.0.1:4096`)
-- `OPENCODE_MODEL_PROVIDER` / `OPENCODE_MODEL_ID` for the underlying LLM
+- Server handles model configuration automatically based on your CLI arguments
 - `OPENCODE_AGENT_ARCHITECT`, `OPENCODE_AGENT_NAVIGATOR`, `OPENCODE_AGENT_DRIVER` if you created custom sub-agents with tailored prompts
 - `OPENCODE_START_SERVER=false` if you want to connect to an existing OpenCode deployment instead of auto-starting a local instance
 
-Example:
+**Note**: Environment variables for providers are deprecated. Use command-line arguments instead:
 
 ```bash
-CLAUDE_PAIR_DRIVER_PROVIDER=opencode \
-CLAUDE_PAIR_NAVIGATOR_PROVIDER=opencode \
-OPENCODE_BASE_URL=http://localhost:4096 \
-pair claude --path ~/project -p "Fix flaky tests"
+# Old way (deprecated)
+CLAUDE_PAIR_DRIVER_PROVIDER=opencode pair -p "Fix tests"
+
+# New way (recommended)
+pair -p "Fix tests" --driver opencode --driver-model openrouter/google/gemini-2.5-flash
 ```
 
 When `opencode` is on your PATH, the provider will automatically launch a local server (`opencode serve`) on `127.0.0.1:4096`. Override the hostname/port with `OPENCODE_HOSTNAME`, `OPENCODE_PORT`, or turn it off entirely with `OPENCODE_START_SERVER=false` and point `OPENCODE_BASE_URL` to a running instance.
@@ -116,33 +146,34 @@ When `opencode` is on your PATH, the provider will automatically launch a local 
 - `LOG_LEVEL`: Enable file logging (default: disabled)
   - `debug`: Enable detailed session logging
 
-When enabled, logs are written to `~/.claude-pair/logs/claude-pair-debug.log`
+When enabled, logs are written to `~/.pair/logs/pair-debug.log`
 
 Example:
 ```bash
 # Enable debug logging in development
-LOG_LEVEL=debug npm run dev -- claude -p "Add tests"
+LOG_LEVEL=debug npm run dev -- -p "Add tests"
 
 # Enable debug logging
-LOG_LEVEL=debug pair claude --path ~/my-project -p "Add tests"
+LOG_LEVEL=debug pair --path ~/my-project -p "Add tests"
 
 # Disable sync status for clean recordings
-CLAUDE_PAIR_DISABLE_SYNC_STATUS=true pair claude -p "Add authentication"
+CLAUDE_PAIR_DISABLE_SYNC_STATUS=true pair -p "Add authentication"
 ```
 
 ### Example Usage with Configuration
 ```bash
 # Give navigator more turns for complex tasks
 CLAUDE_PAIR_NAVIGATOR_MAX_TURNS=75 \
-  pair claude --path ~/my-project -p "Complex refactoring task"
+  pair --path ~/my-project -p "Complex refactoring task"
 
 # Use different turn limits
 CLAUDE_PAIR_NAVIGATOR_MAX_TURNS=30 CLAUDE_PAIR_DRIVER_MAX_TURNS=10 \
-  pair claude --path ~/project -f task.md
+  pair --path ~/project -f task.md
 
-# Use a specific Claude model
-CLAUDE_PAIR_MODEL=claude-3-opus-20240229 \
-  pair claude --path ~/project -p "Complex architectural task"
+# Use specific models for different roles
+pair --path ~/project -p "Complex architectural task" \
+  --architect claude-code --architect-model claude-opus-4-1-20250805 \
+  --navigator opencode --navigator-model openrouter/google/gemini-2.5-flash
 
 ```
 
@@ -160,12 +191,27 @@ When you start the application:
 
 ```
 src/
-├── index.ts                    # Main orchestrator
+├── index.ts                    # Main entry point
+├── app.ts                      # Application orchestration
 ├── conversations/              # Agent implementations
-├── components/                 # UI components
+│   ├── Architect.ts            # Planning agent
+│   ├── Driver.ts               # Implementation agent
+│   ├── Navigator.ts            # Review agent
+│   └── navigator/              # Navigator utilities
+├── providers/                  # Provider implementations
+│   ├── embedded/               # In-process providers
+│   │   ├── claudeCode.ts       # Claude Code provider
+│   │   ├── opencode.ts         # OpenCode provider
+│   │   └── opencode/           # OpenCode modules
+│   └── factory.ts              # Provider factory
 ├── utils/                      # Helper functions
-├── config.ts                   # Configuration
-└── types.ts                    # Type definitions
+│   ├── cli.ts                  # CLI argument parsing
+│   ├── config.ts               # Configuration management
+│   ├── implementationLoop.ts   # Core implementation logic
+│   └── ...                     # Other utilities
+├── components/                 # UI components
+├── display.tsx                 # Display management
+└── types/                      # Type definitions
 ```
 
 ## Requirements

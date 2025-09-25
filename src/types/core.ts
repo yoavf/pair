@@ -68,12 +68,19 @@ export interface PairProgrammingState {
 	phase?: SessionPhase;
 	quitState?: "normal" | "confirm";
 	providers: AgentProviders;
+	models: AgentConfiguration;
 }
 
 export interface AgentProviders {
 	architect: string;
 	navigator: string;
 	driver: string;
+}
+
+export interface AgentConfiguration {
+	architect: { provider: string; model?: string };
+	navigator: { provider: string; model?: string };
+	driver: { provider: string; model?: string };
 }
 
 export interface MessageEntry {

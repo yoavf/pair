@@ -12,6 +12,7 @@ import type {
 	AgentInputStream,
 	AgentMessage,
 	AgentSession,
+	ProviderConfig,
 	SessionOptions,
 	StreamingAgentSession,
 	StreamingSessionOptions,
@@ -43,7 +44,7 @@ class ClaudeCodeSession implements AgentSession {
 			: {};
 
 		// Convert options to Claude Code SDK format
-		const queryOptions = {
+		const queryOptions: any = {
 			cwd: options.projectPath,
 			appendSystemPrompt: options.systemPrompt,
 			allowedTools: options.allowedTools,
@@ -55,6 +56,11 @@ class ClaudeCodeSession implements AgentSession {
 			// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK canUseTool has different signature than our interface
 			canUseTool: options.canUseTool as any,
 		};
+
+		// Add model if provided in options
+		if ((options as any).model) {
+			queryOptions.model = (options as any).model;
+		}
 
 		// Create the query session
 		this.iterator = query({
@@ -155,21 +161,28 @@ class ClaudeCodeStreamingSession implements StreamingAgentSession {
 			: { [options.mcpRole]: options.embeddedMcpServer };
 
 		// Create the query session (extracted from Driver/Navigator)
+		const queryOptions: any = {
+			cwd: options.projectPath,
+			appendSystemPrompt: options.systemPrompt,
+			allowedTools: toolsToPass,
+			mcpServers,
+			disallowedTools: options.disallowedTools,
+			permissionMode: "default",
+			maxTurns: options.maxTurns,
+			includePartialMessages: options.includePartialMessages ?? true,
+			// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK canUseTool has different signature than our interface
+			canUseTool: options.canUseTool as any,
+		};
+
+		// Add model if provided in options
+		if ((options as any).model) {
+			queryOptions.model = (options as any).model;
+		}
+
 		this.iterator = query({
 			// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK query expects different prompt type
 			prompt: this.inputStream as any,
-			options: {
-				cwd: options.projectPath,
-				appendSystemPrompt: options.systemPrompt,
-				allowedTools: toolsToPass,
-				mcpServers,
-				disallowedTools: options.disallowedTools,
-				permissionMode: "default",
-				maxTurns: options.maxTurns,
-				includePartialMessages: options.includePartialMessages ?? true,
-				// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK canUseTool has different signature than our interface
-				canUseTool: options.canUseTool as any,
-			},
+			options: queryOptions,
 			// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK returns internal generator type
 		}) as AsyncGenerator<any, void>;
 	}
@@ -217,12 +230,25 @@ class ClaudeCodeStreamingSession implements StreamingAgentSession {
  */
 export class ClaudeCodeProvider extends BaseEmbeddedProvider {
 	readonly name = "claude-code";
+	private readonly modelId: string | undefined;
+
+	constructor(config: ProviderConfig) {
+		super(config);
+		// Store the model from config if provided
+		this.modelId = config.model;
+	}
 
 	/**
 	 * Create a new Claude Code session (for Architect)
 	 */
 	createSession(options: SessionOptions): AgentSession {
-		return new ClaudeCodeSession(options);
+		// Pass model ID through options if configured
+		const enhancedOptions = { ...options };
+		if (this.modelId) {
+			// Claude Code SDK expects the model in options
+			(enhancedOptions as any).model = this.modelId;
+		}
+		return new ClaudeCodeSession(enhancedOptions);
 	}
 
 	/**
@@ -231,7 +257,13 @@ export class ClaudeCodeProvider extends BaseEmbeddedProvider {
 	createStreamingSession(
 		options: StreamingSessionOptions,
 	): StreamingAgentSession {
-		return new ClaudeCodeStreamingSession(options);
+		// Pass model ID through options if configured
+		const enhancedOptions = { ...options };
+		if (this.modelId) {
+			// Claude Code SDK expects the model in options
+			(enhancedOptions as any).model = this.modelId;
+		}
+		return new ClaudeCodeStreamingSession(enhancedOptions);
 	}
 
 	getPlanningConfig(task: string): {

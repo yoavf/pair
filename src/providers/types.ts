@@ -37,10 +37,18 @@ export type DiagnosticLogger = (
 	data: Record<string, unknown>,
 ) => void;
 
+/**
+ * Model configuration for a specific agent role
+ */
+export interface ModelConfig {
+	provider: string; // e.g., "claude-code", "opencode"
+	model?: string; // e.g., "claude-opus-4.1", "openai/gpt-5-codex"
+}
+
 export interface ProviderConfig {
 	type: "claude-code" | "codex" | "opencode" | string;
 	apiKey?: string;
-	model?: string;
+	model?: string; // Model identifier to use with this provider
 	baseUrl?: string;
 	options?: Record<string, unknown>;
 }

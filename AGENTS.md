@@ -1,6 +1,6 @@
-# Pair Claude Repository Guidelines
+# Pair Repository Guidelines
 
-Pair is a CLI utility to run two Claude instances in pair programming mode.
+Pair is a CLI utility to run coding agents in pair programming mode.
 
 ## Project Structure & Module Organization
 - `src/` TypeScript sources (ES modules):
@@ -18,7 +18,7 @@ Pair is a CLI utility to run two Claude instances in pair programming mode.
 - `npm start` — Run compiled CLI (`node dist/index.js`).
 - `npm run dev` — Run in watchless dev using `tsx` (no build).
 - `npm run watch` — Type-check and rebuild on file changes.
-- Example: `npm run dev -- claude --path . -p "Add logging"`.
+- Example: `npm run dev -- --path . -p "Add logging"`.
 
 ## Architecture & Agent Behavior
 - Architect (plan): Creates the initial plan in a non-interactive planning phase, then exits after returning plan via ExitPlanMode.
@@ -37,16 +37,21 @@ Pair is a CLI utility to run two Claude instances in pair programming mode.
 - Formatting/Linting: keep consistent with existing files; run `tsc` to type-check.
 
 ## Testing Guidelines
-- No formal test runner configured. Use manual/smoke tests:
-  - `npm run dev` and validate CLI flow, UI rendering, transfers, and tool fences (no 400 tool_use/tool_result errors).
-  - Prefer pure functions in `utils/` for easy unit testing.
-- If adding tests, co-locate under `src/**/__tests__/*.test.ts` and document the chosen runner in the PR.
+- Test runner: Vitest configured for unit and integration tests
+- Unit tests: `test/unit/` directory structure
+- Integration tests: `test/integration/` directory (requires `RUN_INTEGRATION_TESTS=true`)
+- Commands:
+  - `npm run test:unit` - Run unit tests
+  - `npm run test:integration` - Run integration tests
+  - `npm run test:coverage` - Run with coverage report
+- Structure tests under `test/unit/` matching `src/` structure
+- Prefer pure functions in `utils/` for easy unit testing
 
 ## Commit & Pull Request Guidelines
 - Commits: imperative present tense (e.g., "add code review"). Conventional Commits are welcome (`feat:`, `fix:`, etc.).
 - PRs: include purpose, linked issues, runnable example command, and screenshots/GIFs of terminal UI when relevant.
 - Keep changes focused; update docs when behavior or flags change.
-- Do not commit secrets; this CLI uses Anthropic credentials. Avoid committing large logs—`Logger` writes to `claude-pair-debug.log`.
+- Do not commit secrets; this CLI uses Anthropic credentials. Avoid committing large logs—`Logger` writes to `pair-debug.log`.
 
 ## Security & Configuration Tips
 - Configure environment via `src/config.ts` and documented env vars in `README.md`.
@@ -55,7 +60,13 @@ Pair is a CLI utility to run two Claude instances in pair programming mode.
 - Avoid pushing changes that remove tool fences or reorder the message flow; the Claude API requires immediate tool_result after tool_use.
 
 ## CLI Usage
-- The CLI uses the `pair claude` command structure to match Claude CLI patterns
-- Basic usage: `pair claude -p "your prompt"`
-- Path specification: `pair claude --path /your/project -p "your prompt"`  
-- File input: `pair claude -f prompt.txt`
+- Command: `pair` (no longer requires `claude` subcommand)
+- Basic usage: `pair -p "your prompt"`
+- Path specification: `pair --path /your/project -p "your prompt"`
+- File input: `pair -f prompt.txt`
+- Provider/model configuration:
+  - `--architect <provider>` and `--architect-model <model>`
+  - `--navigator <provider>` and `--navigator-model <model>`
+  - `--driver <provider>` and `--driver-model <model>`
+- Available providers: `claude-code` (default), `opencode`
+- OpenCode requires explicit model: `--architect opencode --architect-model openrouter/google/gemini-2.5-flash`
