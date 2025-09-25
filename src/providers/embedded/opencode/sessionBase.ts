@@ -67,6 +67,17 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 	// Track active permission requests to ensure one approval per request
 	private currentPermissionRequestId: string | null = null;
 
+	// Debouncing for high-frequency events
+	private eventDebounceTimer?: NodeJS.Timeout;
+	private eventDebounceBuffer = new Map<string, number>();
+	private textPartDebounceTimer?: NodeJS.Timeout;
+	private textPartDebounceBuffer = new Map<
+		string,
+		{ messageId: string; length: number; count: number }
+	>();
+	private readonly EVENT_DEBOUNCE_MS = 1000;
+	private readonly TEXT_PART_DEBOUNCE_MS = 500;
+
 	private readonly promptQueue: string[] = [];
 	private processing = false;
 	private closed = false;
@@ -231,9 +242,10 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 			for await (const event of stream) {
 				if (this.closed) break;
 				if (!this.sessionId) continue;
-				this.logDiagnostic("OPENCODE_EVENT_RECEIVED", {
-					eventType: event.type,
-				});
+
+				// Debounce event logging
+				this.debounceEventLog(event.type);
+
 				switch (event.type) {
 					case "permission.updated": {
 						await this.handlePermission(event as EventPermissionUpdated);
@@ -332,11 +344,12 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 		if (part.sessionID !== this.sessionId) return;
 		switch (part.type) {
 			case "text":
-				this.logDiagnostic("OPENCODE_PART_TEXT", {
-					partId: part.id,
-					messageId: part.messageID,
-					length: part.text?.length ?? 0,
-				});
+				// Debounce text part logging
+				this.debounceTextPartLog(
+					part.id,
+					part.messageID,
+					part.text?.length ?? 0,
+				);
 				this.handleTextPart(part);
 				break;
 			case "reasoning":
@@ -701,6 +714,17 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 		} finally {
 			this.queue.finish();
 			this.logDiagnostic("OPENCODE_SESSION_ENDED", {});
+
+			// Flush any remaining debounced logs
+			if (this.eventDebounceTimer) {
+				clearTimeout(this.eventDebounceTimer);
+				this.flushEventDebounceBuffer();
+			}
+			if (this.textPartDebounceTimer) {
+				clearTimeout(this.textPartDebounceTimer);
+				this.flushTextPartDebounceBuffer();
+			}
+
 			try {
 				await this.disposeResources?.();
 			} catch {
@@ -721,5 +745,84 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 
 	[Symbol.asyncIterator](): AsyncIterator<AgentMessage> {
 		return this.queue[Symbol.asyncIterator]();
+	}
+
+	private debounceEventLog(eventType: string): void {
+		const count = (this.eventDebounceBuffer.get(eventType) ?? 0) + 1;
+		this.eventDebounceBuffer.set(eventType, count);
+
+		if (this.eventDebounceTimer) {
+			clearTimeout(this.eventDebounceTimer);
+		}
+
+		this.eventDebounceTimer = setTimeout(() => {
+			this.flushEventDebounceBuffer();
+		}, this.EVENT_DEBOUNCE_MS);
+	}
+
+	private flushEventDebounceBuffer(): void {
+		if (this.eventDebounceBuffer.size > 0) {
+			const summary: Record<string, number> = {};
+			for (const [eventType, count] of this.eventDebounceBuffer) {
+				summary[eventType] = count;
+			}
+			this.logDiagnostic("OPENCODE_EVENTS_RECEIVED", {
+				events: summary,
+				total: Array.from(this.eventDebounceBuffer.values()).reduce(
+					(a, b) => a + b,
+					0,
+				),
+			});
+			this.eventDebounceBuffer.clear();
+		}
+		this.eventDebounceTimer = undefined;
+	}
+
+	private debounceTextPartLog(
+		partId: string,
+		messageId: string,
+		length: number,
+	): void {
+		const existing = this.textPartDebounceBuffer.get(partId);
+		if (existing) {
+			existing.length = length;
+			existing.count++;
+		} else {
+			this.textPartDebounceBuffer.set(partId, { messageId, length, count: 1 });
+		}
+
+		if (this.textPartDebounceTimer) {
+			clearTimeout(this.textPartDebounceTimer);
+		}
+
+		this.textPartDebounceTimer = setTimeout(() => {
+			this.flushTextPartDebounceBuffer();
+		}, this.TEXT_PART_DEBOUNCE_MS);
+	}
+
+	private flushTextPartDebounceBuffer(): void {
+		if (this.textPartDebounceBuffer.size > 0) {
+			const parts: Array<{
+				partId: string;
+				messageId: string;
+				length: number;
+				updates: number;
+			}> = [];
+			for (const [partId, data] of this.textPartDebounceBuffer) {
+				parts.push({
+					partId,
+					messageId: data.messageId,
+					length: data.length,
+					updates: data.count,
+				});
+			}
+			this.logDiagnostic("OPENCODE_TEXT_PARTS_UPDATED", {
+				parts,
+				totalParts: parts.length,
+				totalUpdates: parts.reduce((sum, p) => sum + p.updates, 0),
+			});
+			this.textPartDebounceBuffer.clear();
+		}
+		this.textPartDebounceTimer = undefined;
 	}
 }
