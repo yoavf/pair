@@ -6,7 +6,7 @@ Pair is a CLI utility to run coding agents in pair programming mode.
 - `src/` TypeScript sources (ES modules):
   - `index.ts` CLI entry and orchestration
   - `components/` Ink + React UI (PascalCase files, `.tsx`)
-  - `conversations/` role agents: `Architect`, `Navigator`, `Driver`
+  - `conversations/` role agents: `Navigator`, `Driver`
   - `utils/` helpers (`config`, `planManager`, `logger`, etc.)
   - `hooks/` React/Ink hooks (e.g., `useMessages`)
   - `display.tsx`, `config.ts`, `types.ts`
@@ -21,11 +21,11 @@ Pair is a CLI utility to run coding agents in pair programming mode.
 - Example: `npm run dev -- --dir . -p "Add logging"`.
 
 ## Architecture & Agent Behavior
-- Architect (plan): Creates the initial plan in a non-interactive planning phase, then exits after returning plan via ExitPlanMode.
-- Navigator (review): Reviews and approves/denies Driver's file modifications and performs code reviews using read‑only tools (Read/Grep/Glob/WebSearch/WebFetch/Bash).
+- Navigator (planning): Creates the initial plan in a non-interactive planning phase, then exits after returning plan via ExitPlanMode.
+- Navigator (monitoring): Reviews and approves/denies Driver's file modifications and performs code reviews using read‑only tools (Read/Grep/Glob/WebSearch/WebFetch/Bash) in a fresh session.
 - Driver (implement): Implements changes with full tool access, coordinated with navigator approvals.
 - Communication: structured commands facilitate coordination between agents with visual transfer indicators.
-- Turn limits: Navigator=50, Driver=20 (configurable via environment variables).
+- Turn limits: Navigator Planning=50, Navigator Monitoring=50, Driver=20 (configurable via environment variables).
 
 ## Coding Style & Naming Conventions
 - Language: TypeScript (strict). JSX in `.tsx` under `components/`.
@@ -65,8 +65,7 @@ Pair is a CLI utility to run coding agents in pair programming mode.
 - Path specification: `pair --dir /your/project -p "your prompt"`
 - File input: `pair -f prompt.txt`
 - Provider/model configuration:
-  - `--architect <provider>` and `--architect-model <model>`
   - `--navigator <provider>` and `--navigator-model <model>`
   - `--driver <provider>` and `--driver-model <model>`
 - Available providers: `claude-code` (default), `opencode`
-- OpenCode requires explicit model: `--architect opencode --architect-model openrouter/google/gemini-2.5-flash`
+- OpenCode requires explicit model: `--navigator opencode --navigator-model openrouter/google/gemini-2.5-flash`

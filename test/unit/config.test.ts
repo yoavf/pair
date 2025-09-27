@@ -10,8 +10,7 @@ describe('validateConfig', () => {
     maxPromptFileSize: 100 * 1024,
     sessionHardLimitMs: 30 * 60 * 1000,
     enableSyncStatus: true,
-    architectConfig: { provider: 'claude-code', model: 'opus-4.1' },
-    navigatorConfig: { provider: 'claude-code', model: undefined },
+    navigatorConfig: { provider: 'claude-code', model: 'opus-4.1' },
     driverConfig: { provider: 'claude-code', model: undefined },
   };
 
@@ -47,10 +46,10 @@ describe('validateConfig', () => {
   it('should reject unknown provider', () => {
     const invalidConfig = {
       ...baseConfig,
-      architectConfig: { provider: 'unknown-provider', model: undefined },
+      navigatorConfig: { provider: 'unknown-provider', model: undefined },
     };
     expect(() => validateConfig(invalidConfig, ['claude-code', 'opencode'])).toThrow(
-      'Unknown architect provider type: "unknown-provider"'
+      'Unknown navigator provider type: "unknown-provider"'
     );
   });
 

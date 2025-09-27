@@ -54,7 +54,7 @@ const Footer: React.FC<Props> = ({
 			<Text backgroundColor={absRightColor || undefined} color="white">
 				{" ".repeat(terminalWidth)}
 			</Text>
-			{/* First line: Driver or Architect */}
+			{/* First line: Driver or Navigator (planning) */}
 			<Box paddingX={1} justifyContent="space-between" marginTop={-1}>
 				<Box>
 					{providers && models && phase === "planning" && (
@@ -62,8 +62,8 @@ const Footer: React.FC<Props> = ({
 							backgroundColor={absRightColor || undefined}
 							color={absRightColor ? "black" : "gray"}
 						>
-							<Text bold>Architect</Text>: {providers.architect} /{" "}
-							{formatModelName(models.architect)}
+							<Text bold>Navigator</Text>: {providers.navigator} /{" "}
+							{formatModelName(models.navigator)} (planning)
 						</Text>
 					)}
 					{providers &&

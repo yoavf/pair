@@ -10,13 +10,13 @@ import type {
 } from "../types.js";
 import { BaseEmbeddedProvider } from "./base.js";
 import {
-	OpencodeArchitectSession,
+	OpencodePlanningSession,
 	OpencodeStreamingSession,
 } from "./opencode/sessions.js";
 import type {
-	ArchitectSessionConfig,
 	OpenCodeClient,
 	OpenCodeProviderConfig,
+	PlanningSessionConfig,
 	RemoteMcpServerConfig,
 	ServerOptions,
 	SessionClientResources,
@@ -108,7 +108,7 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 			modelId = parsed.model.modelId;
 		} else {
 			throw new Error(
-				"OpenCode provider requires model configuration. Please specify model with format 'provider/model' (e.g., '--architect opencode/openrouter/google/gemini-2.5-flash')",
+				"OpenCode provider requires model configuration. Please specify model with format 'provider/model' (e.g., '--navigator opencode/openrouter/google/gemini-2.5-flash')",
 			);
 		}
 
@@ -126,9 +126,7 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 				modelId,
 			},
 			agents: {
-				// Use OpenCode's built-in "plan" agent for architect role
-				architect: parsed.agents?.architect ?? "plan",
-				navigator: parsed.agents?.navigator ?? undefined,
+				navigator: parsed.agents?.navigator ?? "plan", // Use "plan" agent for planning phase
 				driver: parsed.agents?.driver ?? undefined,
 			},
 			startServer,
@@ -146,16 +144,16 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 			this.providerConfig.directory || options.projectPath || undefined;
 		const resolvedDirectory = this.resolveDirectory(sessionDirectory);
 		const resources = this.createClientResources({
-			role: "architect",
+			role: "planning",
 			directory: resolvedDirectory,
 			sessionMcpServerUrl: this.normalizeMcpUrl(options.mcpServerUrl),
 		});
 		const cleanup = this.registerCleanup(resources.cleanup);
-		const config: ArchitectSessionConfig = {
-			role: "architect",
+		const config: PlanningSessionConfig = {
+			role: "planning",
 			systemPrompt: options.systemPrompt,
 			directory: resolvedDirectory,
-			agentName: this.providerConfig.agents.architect,
+			agentName: this.providerConfig.agents.navigator,
 			model: this.providerConfig.model,
 			canUseTool: options.canUseTool as ToolGuard | undefined,
 			includePartialMessages:
@@ -168,7 +166,7 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 			this.activeProjectPath = resolvedDirectory;
 			this.lastResolvedDirectory = resolvedDirectory;
 		}
-		return new OpencodeArchitectSession(resources.getClient, config, cleanup);
+		return new OpencodePlanningSession(resources.getClient, config, cleanup);
 	}
 
 	createStreamingSession(
@@ -178,7 +176,7 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 			this.providerConfig.directory || options.projectPath || undefined;
 		const resolvedDirectory = this.resolveDirectory(sessionDirectory);
 		const resources = this.createClientResources({
-			role: options.mcpRole,
+			role: options.mcpRole || "navigator",
 			directory: resolvedDirectory,
 			sessionMcpServerUrl: this.normalizeMcpUrl(options.mcpServerUrl),
 		});
@@ -191,7 +189,7 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 					: false;
 
 		const config: StreamingSessionConfig = {
-			role: options.mcpRole,
+			role: options.mcpRole || "navigator",
 			systemPrompt: options.systemPrompt,
 			directory: resolvedDirectory,
 			agentName:
@@ -242,7 +240,7 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 	}
 
 	private createClientResources(params: {
-		role: "architect" | "navigator" | "driver";
+		role: "planning" | "navigator" | "driver";
 		directory?: string;
 		sessionMcpServerUrl?: string;
 	}): SessionClientResources {
@@ -330,7 +328,7 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 	}
 
 	private buildServerConfigForRole(params: {
-		role: "architect" | "navigator" | "driver";
+		role: "planning" | "navigator" | "driver";
 		directory?: string;
 		sessionMcpServerUrl?: string;
 	}): Record<string, unknown> | undefined {

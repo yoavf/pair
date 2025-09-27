@@ -2,7 +2,7 @@
  * Core domain types for Claude Pair Programming
  */
 
-export type Role = "navigator" | "driver" | "architect";
+export type Role = "navigator" | "driver";
 
 export type SessionPhase = "planning" | "execution" | "review" | "complete";
 
@@ -72,13 +72,11 @@ export interface PairProgrammingState {
 }
 
 export interface AgentProviders {
-	architect: string;
 	navigator: string;
 	driver: string;
 }
 
 export interface AgentConfiguration {
-	architect: { provider: string; model?: string };
 	navigator: { provider: string; model?: string };
 	driver: { provider: string; model?: string };
 }

@@ -122,11 +122,11 @@ describe('Shared Tool Utilities', () => {
 
 		describe('custom role', () => {
 			it('should handle custom roles correctly', () => {
-				expect(normalizeMcpTool('mcp__architect__planCreate', 'architect'))
-					.toBe('mcp__architect__planCreate');
-				expect(normalizeMcpTool('pair-architect_planCreate', 'architect'))
-					.toBe('mcp__architect__planCreate');
-				expect(normalizeMcpTool('SomeTool', 'architect'))
+				expect(normalizeMcpTool('mcp__navigator__navigatorApprove', 'navigator'))
+					.toBe('mcp__navigator__navigatorApprove');
+				expect(normalizeMcpTool('pair-navigator_navigatorApprove', 'navigator'))
+					.toBe('mcp__navigator__navigatorApprove');
+				expect(normalizeMcpTool('SomeTool', 'navigator'))
 					.toBe('SomeTool');
 			});
 		});

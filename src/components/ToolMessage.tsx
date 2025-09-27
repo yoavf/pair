@@ -4,7 +4,7 @@ import type React from "react";
 interface Props {
 	content: string;
 	color: string;
-	sessionRole: "navigator" | "driver" | "architect";
+	sessionRole: "navigator" | "driver";
 	symbol?: string; // set to "" to suppress the default symbol
 	symbolColor?: string;
 }

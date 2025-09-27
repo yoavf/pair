@@ -17,8 +17,7 @@ const GenericMessage: React.FC<Props> = ({
 	entryKey,
 	driverWidth,
 }) => {
-	const isNavigator =
-		message.sessionRole === "navigator" || message.sessionRole === "architect";
+	const isNavigator = message.sessionRole === "navigator";
 
 	return (
 		<Box key={entryKey} justifyContent={"flex-start"} marginY={1}>
@@ -28,9 +27,7 @@ const GenericMessage: React.FC<Props> = ({
 						<Text dimColor>[{timestamp}] </Text>
 						{isNavigator ? (
 							<Text bold color="cyan">
-								{message.sessionRole === "architect"
-									? "🏗️ ARCHITECT:"
-									: "🧭 NAVIGATOR:"}
+								🧭 NAVIGATOR:
 							</Text>
 						) : (
 							<Text bold color="green">

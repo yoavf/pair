@@ -115,7 +115,7 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 		this.disposeResources = disposeResources;
 	}
 
-	protected get role(): "architect" | "navigator" | "driver" {
+	protected get role(): "planning" | "navigator" | "driver" {
 		return this.config.role;
 	}
 

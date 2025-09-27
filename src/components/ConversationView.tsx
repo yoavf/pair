@@ -198,9 +198,7 @@ const ConversationView: React.FC<Props> = React.memo(({ messages, phase }) => {
 			}
 
 			const isNavigator = message.sessionRole === "navigator";
-			const isNavigatorOrArchitect =
-				isNavigator || message.sessionRole === "architect";
-			const currentRole: "driver" | "navigator" = isNavigatorOrArchitect
+			const currentRole: "driver" | "navigator" = isNavigator
 				? "navigator"
 				: "driver";
 			const roleChanged = lastRole && lastRole !== currentRole;

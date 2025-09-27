@@ -10,7 +10,7 @@ import type {
 import { OpencodeSessionBase } from "./sessionBase.js";
 import type { OpenCodeClient, StreamingSessionConfig } from "./types.js";
 
-export class OpencodeArchitectSession
+export class OpencodePlanningSession
 	extends OpencodeSessionBase
 	implements AgentSession
 {

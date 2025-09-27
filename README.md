@@ -1,18 +1,18 @@
 # Pair
 
-Pair is a CLI utility that orchestrates coding agents working together in a pair programming session. The architect, navigator, and driver roles can each run on different providers, including Claude Code and the OpenCode SDK.
+Pair is a CLI utility that orchestrates coding agents working together in a pair programming session. The navigator and driver roles can each run on different providers, including Claude Code and the OpenCode SDK.
 
 ## Overview
 
-This tool creates a collaborative coding session with two agent instances working together.
+This tool creates a collaborative coding session with two agent roles working together.
 
-- The session starts with a **Planning** phase where a plan is formulated by the Architect.
-- The plan is then passed to the Driver for **implementation**.
+- The session starts with a **Planning** phase where the Navigator formulates a plan.
+- The plan is then passed to the Driver for **implementation** with a fresh Navigator instance monitoring.
 - The Navigator acts in two moments only:
   - Approving/denying file modifications when the Driver requests an edit (Approve / Deny).
   - Performing a code review when the Driver explicitly asks (CodeReview pass=true|false, then Complete).
 
-The Navigator stays otherwise silent; the Driver makes actual changes and progresses continuously.
+The Navigator stays otherwise silent during implementation; the Driver makes actual changes and progresses continuously.
 
 ## Installation
 
@@ -47,7 +47,7 @@ pair --dir ~/my-project -f prompt.txt
 pair -f tasks/feature-request.md
 
 # Use specific providers and models
-pair -p "Add tests" --architect claude-code --architect-model opus-4.1
+pair -p "Add tests" --navigator claude-code --navigator-model opus-4.1
 pair -p "Refactor" --navigator opencode --navigator-model openrouter/google/gemini-2.5-flash
 ```
 
@@ -55,9 +55,7 @@ pair -p "Refactor" --navigator opencode --navigator-model openrouter/google/gemi
 - `--dir <path>`: Project directory path (default: current directory)
 - `-p, --prompt <text>`: Task prompt as text
 - `-f, --file <file>`: Load prompt from file (.txt, .md, .json, .yaml, .yml)
-- `--architect <provider>`: Set architect provider (claude-code, opencode)
-- `--architect-model <model>`: Set architect model
-- `--navigator <provider>`: Set navigator provider
+- `--navigator <provider>`: Set navigator provider (claude-code, opencode)
 - `--navigator-model <model>`: Set navigator model
 - `--driver <provider>`: Set driver provider
 - `--driver-model <model>`: Set driver model
@@ -87,7 +85,7 @@ When the session hard limit is reached during execution, a short notice appears 
 
 ### Agent Providers and Models
 
-Each role (architect, navigator, driver) can use different providers and models:
+Each role (navigator, driver) can use different providers and models:
 
 #### Available Providers
 
@@ -95,7 +93,7 @@ Each role (architect, navigator, driver) can use different providers and models:
 - `opencode` - Uses OpenCode SDK
 
 #### Claude Code Models
-- Default: `claude-opus-4.1` for architect, Sonnet for navigator/driver
+- Default: `claude-opus-4.1` for navigator (both planning and monitoring), Sonnet for driver
 - Can specify: `opus-4.1`, `sonnet`, etc.
 
 #### OpenCode Models
@@ -110,13 +108,13 @@ pair -p "Add feature"
 
 # Mixed providers
 pair -p "Add tests" \
-  --architect opencode --architect-model openrouter/google/gemini-2.5-flash \
+  --navigator opencode --navigator-model openrouter/google/gemini-2.5-flash \
   --navigator claude-code --navigator-model opus-4.1 \
   --driver claude-code
 
 # All OpenCode
 pair -p "Refactor" \
-  --architect opencode --architect-model openai/gpt-4 \
+  --navigator opencode --navigator-model openai/gpt-4 \
   --navigator opencode --navigator-model openrouter/anthropic/claude-opus-4.1 \
   --driver opencode --driver-model openrouter/google/gemini-2.5-flash
 ```
@@ -127,7 +125,7 @@ When using OpenCode, configure the server with:
 
 - `OPENCODE_BASE_URL` (defaults to `http://127.0.0.1:4096`)
 - Server handles model configuration automatically based on your CLI arguments
-- `OPENCODE_AGENT_ARCHITECT`, `OPENCODE_AGENT_NAVIGATOR`, `OPENCODE_AGENT_DRIVER` if you created custom sub-agents with tailored prompts
+- `OPENCODE_AGENT_NAVIGATOR`, `OPENCODE_AGENT_DRIVER` if you created custom sub-agents with tailored prompts
 - `OPENCODE_START_SERVER=false` if you want to connect to an existing OpenCode deployment instead of auto-starting a local instance
 
 **Note**: Environment variables for providers are deprecated. Use command-line arguments instead:
@@ -172,7 +170,7 @@ CLAUDE_PAIR_NAVIGATOR_MAX_TURNS=30 CLAUDE_PAIR_DRIVER_MAX_TURNS=10 \
 
 # Use specific models for different roles
 pair --dir ~/project -p "Complex architectural task" \
-  --architect claude-code --architect-model claude-opus-4-1-20250805 \
+  --navigator claude-code --navigator-model claude-opus-4-1-20250805 \
   --navigator opencode --navigator-model openrouter/google/gemini-2.5-flash
 
 ```
@@ -194,7 +192,7 @@ src/
 ├── index.ts                    # Main entry point
 ├── app.ts                      # Application orchestration
 ├── conversations/              # Agent implementations
-│   ├── Architect.ts            # Planning agent
+│   ├── Navigator.ts            # Planning and monitoring agent
 │   ├── Driver.ts               # Implementation agent
 │   ├── Navigator.ts            # Review agent
 │   └── navigator/              # Navigator utilities

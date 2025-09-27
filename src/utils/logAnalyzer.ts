@@ -29,7 +29,7 @@ interface LogEntry {
 
 interface SequenceEvent {
 	timestamp: string;
-	actor: "Architect" | "Navigator" | "Driver" | "System";
+	actor: "Navigator" | "Driver" | "System" | "Planning" | "Architect"; // Architect for backward compatibility
 	action: string;
 	details?: string;
 	data?: any;
@@ -238,14 +238,18 @@ export class LogAnalyzer {
 					break;
 
 				case "EVENT":
-					if (entry.event?.includes("ARCHITECT")) {
-						actor = "Architect";
+					if (
+						entry.event?.includes("ARCHITECT") ||
+						entry.event?.includes("PLANNING")
+					) {
+						actor = "Planning"; // Map old architect events to planning
 						if (entry.event.includes("PLAN_CREATED")) {
 							action = "Creates plan";
 							details = `Plan length: ${entry.data?.planLength} chars, ${entry.data?.turnCount} turns`;
 						} else {
 							action = entry.event
 								.replace("ARCHITECT_", "")
+								.replace("PLANNING_", "")
 								.toLowerCase()
 								.replace(/_/g, " ");
 						}
@@ -391,7 +395,7 @@ export class LogAnalyzer {
 	 */
 	generateTextSequenceDiagram(
 		events?: SequenceEvent[],
-		includeArchitect?: boolean,
+		includePlanning?: boolean,
 	): string {
 		const sequenceEvents = events || this.toSequenceEvents();
 
@@ -399,12 +403,17 @@ export class LogAnalyzer {
 			return "No events found in log file.";
 		}
 
-		// Filter out Architect events by default and reorder
-		const filteredEvents = includeArchitect
+		// Filter out planning events by default and reorder
+		const filteredEvents = includePlanning
 			? sequenceEvents
-			: sequenceEvents.filter((event) => event.actor !== "Architect");
-		const actors = includeArchitect
-			? ["Driver", "System", "Navigator", "Architect"]
+			: sequenceEvents.filter(
+					(event) =>
+						event.actor !== "Architect" &&
+						event.actor !== "Planning" &&
+						!event.details?.includes("planning"),
+				);
+		const actors = includePlanning
+			? ["Driver", "System", "Navigator"]
 			: ["Driver", "System", "Navigator"];
 		const maxActorLength = Math.max(...actors.map((a) => a.length));
 		const header = actors
@@ -445,7 +454,7 @@ export class LogAnalyzer {
 	 */
 	generateMermaidSequenceDiagram(
 		events?: SequenceEvent[],
-		includeArchitect?: boolean,
+		includePlanning?: boolean,
 	): string {
 		const sequenceEvents = events || this.toSequenceEvents();
 
@@ -453,17 +462,22 @@ export class LogAnalyzer {
 			return "sequenceDiagram\n    Note over System: No events found";
 		}
 
-		// Filter out Architect events by default
-		const filteredEvents = includeArchitect
+		// Filter out planning events by default
+		const filteredEvents = includePlanning
 			? sequenceEvents
-			: sequenceEvents.filter((event) => event.actor !== "Architect");
+			: sequenceEvents.filter(
+					(event) =>
+						event.actor !== "Architect" &&
+						event.actor !== "Planning" &&
+						!event.details?.includes("planning"),
+				);
 
 		let mermaid = "sequenceDiagram\n";
 		mermaid += "    participant D as Driver\n";
 		mermaid += "    participant S as System\n";
 		mermaid += "    participant N as Navigator\n";
-		if (includeArchitect) {
-			mermaid += "    participant A as Architect\n";
+		if (includePlanning) {
+			mermaid += "    participant P as Planning\n";
 		}
 		mermaid += "\n";
 
@@ -522,7 +536,8 @@ export class LogAnalyzer {
 		const normalized = actor.toLowerCase();
 		switch (normalized) {
 			case "architect":
-				return "Architect";
+			case "planning":
+				return "Planning";
 			case "navigator":
 				return "Navigator";
 			case "driver":

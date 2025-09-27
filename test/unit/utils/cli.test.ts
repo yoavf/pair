@@ -36,7 +36,6 @@ describe("CLI Utils", () => {
       navigatorMaxTurns: 50,
       driverMaxTurns: 20,
       enableSyncStatus: false,
-      architectConfig: { provider: "claude-code", model: "opus-4.1" },
       navigatorConfig: { provider: "claude-code", model: undefined },
       driverConfig: { provider: "claude-code", model: undefined },
     };
@@ -100,21 +99,6 @@ describe("CLI Utils", () => {
     });
 
     describe("provider configuration", () => {
-      it("should configure architect provider and model", async () => {
-        const args = [
-          "-p", "Test task",
-          "--architect", "opencode",
-          "--architect-model", "gpt-4"
-        ];
-
-        const result = await parseCliArgs(args);
-
-        expect(result.config.architectConfig).toEqual({
-          provider: "opencode",
-          model: "gpt-4"
-        });
-      });
-
       it("should configure navigator provider and model", async () => {
         const args = [
           "-p", "Test task",
@@ -150,7 +134,6 @@ describe("CLI Utils", () => {
 
         const result = await parseCliArgs(args);
 
-        expect(result.config.architectConfig.provider).toBe("claude-code");
         expect(result.config.navigatorConfig.provider).toBe("claude-code");
         expect(result.config.driverConfig.provider).toBe("claude-code");
       });
@@ -161,8 +144,6 @@ describe("CLI Utils", () => {
         const args = [
           "-p", "Complex task",
           "-d", "/test/project",
-          "--architect", "opencode",
-          "--architect-model", "gpt-4",
           "--navigator", "claude-code",
           "--navigator-model", "sonnet",
           "--driver", "opencode",
@@ -173,7 +154,6 @@ describe("CLI Utils", () => {
 
         expect(result.projectPath).toBe("/test/project");
         expect(result.task).toBe("Complex task");
-        expect(result.config.architectConfig).toEqual({ provider: "opencode", model: "gpt-4" });
         expect(result.config.navigatorConfig).toEqual({ provider: "claude-code", model: "sonnet" });
         expect(result.config.driverConfig).toEqual({ provider: "opencode", model: "opus" });
       });
@@ -181,12 +161,12 @@ describe("CLI Utils", () => {
       it("should handle model names with special characters", async () => {
         const args = [
           "-p", "Test",
-          "--architect-model", "openrouter/google/gemini-2.5-flash"
+          "--navigator-model", "openrouter/google/gemini-2.5-flash"
         ];
 
         const result = await parseCliArgs(args);
 
-        expect(result.config.architectConfig.model).toBe("openrouter/google/gemini-2.5-flash");
+        expect(result.config.navigatorConfig.model).toBe("openrouter/google/gemini-2.5-flash");
       });
     });
 

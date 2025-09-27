@@ -16,7 +16,6 @@ describe('PairApp Initialization', () => {
     maxPromptFileSize: 100 * 1024,
     sessionHardLimitMs: 30 * 60 * 1000,
     enableSyncStatus: true,
-    architectConfig: { provider: 'claude-code', model: undefined },
     navigatorConfig: { provider: 'claude-code', model: undefined },
     driverConfig: { provider: 'claude-code', model: undefined },
   };
@@ -73,7 +72,7 @@ describe('PairApp Initialization', () => {
       showTransitionMessage: vi.fn(),
       cleanup: vi.fn(),
       getPhase: vi.fn(() => 'planning'),
-      showArchitectTurn: vi.fn(),
+      showPlanningTurn: vi.fn(),
       showNavigatorTurn: vi.fn(),
       showDriverTurn: vi.fn(),
       showToolUse: vi.fn(),
@@ -105,7 +104,6 @@ describe('PairApp Initialization', () => {
   test('should initialize with OpenCode provider without errors', () => {
     const openCodeConfig: AppConfig = {
       ...mockConfig,
-      architectConfig: { provider: 'opencode', model: 'openrouter/google/gemini-2.5-flash' },
       navigatorConfig: { provider: 'opencode', model: 'openrouter/google/gemini-2.5-flash' },
       driverConfig: { provider: 'opencode', model: 'openrouter/google/gemini-2.5-flash' },
     };

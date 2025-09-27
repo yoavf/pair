@@ -32,7 +32,6 @@ describe('Provider Integration', () => {
 			maxPromptFileSize: 100 * 1024,
 			sessionHardLimitMs: 30 * 60 * 1000,
 			enableSyncStatus: true,
-			architectConfig: { provider: 'claude-code', model: undefined },
 			navigatorConfig: { provider: 'opencode', model: 'openrouter/google/gemini-2.5-flash' },
 			driverConfig: { provider: 'claude-code', model: undefined },
 		};
@@ -49,8 +48,7 @@ describe('Provider Integration', () => {
 			maxPromptFileSize: 100 * 1024,
 			sessionHardLimitMs: 30 * 60 * 1000,
 			enableSyncStatus: true,
-			architectConfig: { provider: 'invalid-provider', model: undefined },
-			navigatorConfig: { provider: 'claude-code', model: undefined },
+			navigatorConfig: { provider: 'invalid-provider', model: undefined },
 			driverConfig: { provider: 'claude-code', model: undefined },
 		};
 

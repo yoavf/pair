@@ -19,9 +19,8 @@ const PERMISSION_TOOL_NAME_MAP: Record<string, string> = {
 	"pair-navigator_navigatorCodeReview": "mcp__navigator__navigatorCodeReview",
 	"pair-navigator_navigatorApprove": "mcp__navigator__navigatorApprove",
 	"pair-navigator_navigatorDeny": "mcp__navigator__navigatorDeny",
-	// Special planning tool for architect
+	// Special planning tool
 	exitplanmode: "ExitPlanMode",
-	"pair-architect_completePlan": "mcp__architect__completePlan",
 	completeplan: "completePlan",
 };
 

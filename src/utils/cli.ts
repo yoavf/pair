@@ -40,8 +40,6 @@ function createProgram(): Command {
 		.option("-p, --prompt <text>", "Task prompt to implement")
 		.option("-d, --dir <path>", "Project directory", process.cwd())
 		.option("-f, --file <file>", "Read prompt from file (overrides --prompt)")
-		.option("--architect <provider>", "Architect provider", "claude-code")
-		.option("--architect-model <model>", "Architect model")
 		.option("--navigator <provider>", "Navigator provider", "claude-code")
 		.option("--navigator-model <model>", "Navigator model")
 		.option("--driver <provider>", "Driver provider", "claude-code")
@@ -51,9 +49,9 @@ function createProgram(): Command {
 			`
 Examples:
   pair -p "Add dark mode toggle"
-  pair -p "Refactor auth" --architect-model opus-4.1
+  pair -p "Refactor auth" --navigator-model opus-4.1
   pair -f task.txt --dir ./my-project
-  pair -p "Add tests" --architect opencode --architect-model openrouter/google/gemini-2.5-flash`,
+  pair -p "Add tests" --navigator opencode --navigator-model openrouter/google/gemini-2.5-flash`,
 		);
 
 	return program;
@@ -71,15 +69,15 @@ export async function parseCliArgs(args: string[]): Promise<ParsedCliArgs> {
 	const options = program.opts();
 
 	// Apply CLI overrides to config
-	config.architectConfig.provider = options.architect;
-	if (options.architectModel) {
-		config.architectConfig.model = options.architectModel;
+	if (options.navigator) {
+		config.navigatorConfig.provider = options.navigator;
 	}
-	config.navigatorConfig.provider = options.navigator;
 	if (options.navigatorModel) {
 		config.navigatorConfig.model = options.navigatorModel;
 	}
-	config.driverConfig.provider = options.driver;
+	if (options.driver) {
+		config.driverConfig.provider = options.driver;
+	}
 	if (options.driverModel) {
 		config.driverConfig.model = options.driverModel;
 	}

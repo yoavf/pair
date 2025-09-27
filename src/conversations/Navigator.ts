@@ -3,9 +3,11 @@ import { EventEmitter } from "node:events";
 import path from "node:path";
 import type {
 	AgentInputStream,
+	AgentSession,
 	EmbeddedAgentProvider,
 	StreamingAgentSession,
 } from "../providers/types.js";
+import { isAllToolsEnabled } from "../types/core.js";
 import type {
 	PermissionOptions,
 	PermissionRequest,
@@ -67,6 +69,176 @@ export class Navigator extends EventEmitter {
 			(request) => this.sendPermissionRequestToNavigator(request),
 			this.logger,
 		);
+	}
+
+	/**
+	 * Create a plan for the given task (planning phase)
+	 * This creates a separate session that is closed after planning
+	 */
+	async createPlan(task: string): Promise<string | null> {
+		this.logger.logEvent("NAVIGATOR_PLANNING_STARTING", {
+			task: task.substring(0, 100),
+			maxTurns: this.maxTurns,
+		});
+
+		let plan: string | null = null;
+		let stopReason: string | null = null;
+		let turnCount = 0;
+		let planningSession: AgentSession | null = null;
+		let planningSessionId: string | null = null;
+		let detectPlanCompletion: ((message: any) => string | null) | undefined;
+
+		try {
+			const toolsToPass = isAllToolsEnabled(this.allowedTools)
+				? undefined
+				: this.allowedTools;
+
+			// Create planning session with provider
+			planningSession = this.provider.createSession({
+				systemPrompt: this.systemPrompt,
+				allowedTools: toolsToPass,
+				maxTurns: this.maxTurns,
+				projectPath: this.projectPath,
+				mcpServerUrl: this.mcpServerUrl || "",
+				permissionMode: "plan",
+				diagnosticLogger: (event, data) => {
+					this.logger.logEvent(event, {
+						agent: "navigator-planning",
+						provider: this.provider.name,
+						...data,
+					});
+				},
+			});
+
+			// Get provider-specific prompt and completion logic
+			const { prompt, detectPlanCompletion: detectFn } =
+				this.provider.getPlanningConfig(task);
+			detectPlanCompletion = detectFn;
+			planningSession.sendMessage(prompt);
+
+			for await (const message of planningSession) {
+				// Capture session ID
+				if (message.session_id && !planningSessionId) {
+					planningSessionId = message.session_id;
+					if (planningSession) {
+						planningSession.sessionId = planningSessionId;
+					}
+					this.logger.logEvent("NAVIGATOR_PLANNING_SESSION_CAPTURED", {
+						sessionId: planningSessionId,
+					});
+				}
+
+				// Track turn count and stop reason
+				if (message.type === "system") {
+					// biome-ignore lint/suspicious/noExplicitAny: Provider message subtype
+					if ((message as any).subtype === "turn_limit_reached") {
+						stopReason = "turn_limit";
+						// biome-ignore lint/suspicious/noExplicitAny: Provider message subtype
+					} else if ((message as any).subtype === "conversation_ended") {
+						stopReason = "completed";
+					}
+				}
+
+				// Handle messages
+				if (message.type === "assistant" && message.message?.content) {
+					turnCount++;
+					const content = message.message.content;
+
+					if (!Array.isArray(content)) {
+						return null;
+					}
+
+					let _fullText = "";
+
+					for (const item of content) {
+						if (item.type === "text") {
+							const text = item.text ?? "";
+							_fullText += `${text}\n`;
+
+							// Emit for display
+							this.emit("message", {
+								role: "assistant",
+								content: text,
+								sessionRole: "navigator" as Role,
+								timestamp: new Date(),
+							});
+						} else if (item.type === "tool_use") {
+							// Emit tool usage
+							this.emit("tool_use", {
+								role: "navigator" as Role,
+								tool: item.name,
+								input: item.input,
+							});
+						}
+					}
+
+					// Use provider-specific completion detection
+					if (detectPlanCompletion) {
+						const detectedPlan = detectPlanCompletion(message);
+						if (detectedPlan) {
+							plan = detectedPlan;
+							this.logger.logEvent("NAVIGATOR_PLAN_CREATED", {
+								planLength: (plan ?? "").length,
+								turnCount,
+							});
+							return plan;
+						}
+					}
+				}
+			}
+
+			// Validate the result
+			this.logger.logEvent("NAVIGATOR_PLANNING_COMPLETED", {
+				stopReason,
+				turnCount,
+				maxTurns: this.maxTurns,
+				hasPlan: !!plan,
+				planLength: (plan ?? "").length,
+			});
+
+			// Check if we got a valid plan
+			this.logger.logEvent("NAVIGATOR_PLAN_VALIDATION_START", {
+				hasPlan: !!plan,
+				planLength: (plan ?? "").length,
+				stopReason,
+			});
+
+			if (!plan) {
+				if (stopReason === "turn_limit") {
+					this.logger.logEvent("NAVIGATOR_PLANNING_FAILED_TURN_LIMIT", {
+						turnCount,
+					});
+					throw new Error(
+						`Navigator reached ${this.maxTurns} turn limit without creating a plan. The task may be too complex or need more specific requirements.`,
+					);
+				} else {
+					this.logger.logEvent("NAVIGATOR_PLANNING_FAILED_NO_PLAN", {
+						stopReason,
+					});
+					throw new Error(
+						"Navigator completed without creating a plan. Please try rephrasing your task.",
+					);
+				}
+			}
+
+			this.logger.logEvent("NAVIGATOR_RETURNING_PLAN", {
+				planLength: String(plan ?? "").length,
+				hasValidPlan: !!plan,
+			});
+			return plan;
+		} catch (error) {
+			this.logger.logEvent("NAVIGATOR_PLANNING_ERROR", {
+				error: error instanceof Error ? error.message : String(error),
+				turnCount,
+			});
+			throw error;
+		} finally {
+			// Clean up planning session
+			if (planningSession) {
+				planningSession.end();
+				planningSession = null;
+			}
+		}
 	}
 
 	/**

@@ -7,12 +7,12 @@ import * as path from 'node:path';
 interface CliOptions {
   logFile?: string;
   output?: 'text' | 'mermaid' | 'json';
-  actor?: 'System' | 'Architect' | 'Navigator' | 'Driver';
+  actor?: 'System' | 'Navigator' | 'Driver';
   timeRange?: string;
   save?: string;
   hideNoise?: boolean;
   toolsOnly?: boolean;
-  includeArchitect?: boolean;
+  includePlanning?: boolean;
 }
 
 function parseArgs(): CliOptions {
@@ -40,7 +40,7 @@ function parseArgs(): CliOptions {
         break;
       case '--actor':
       case '-a':
-        if (['System', 'Architect', 'Navigator', 'Driver'].includes(next)) {
+        if (['System', 'Navigator', 'Driver'].includes(next)) {
           options.actor = next as any;
         }
         i++;
@@ -61,8 +61,9 @@ function parseArgs(): CliOptions {
       case '--tools-only':
         options.toolsOnly = true;
         break;
-      case '--include-architect':
-        options.includeArchitect = true;
+      case '--include-planning':
+      case '--include-architect': // Legacy compatibility
+        options.includePlanning = true;
         break;
       case '--help':
       case '-h':
@@ -84,12 +85,12 @@ Usage: tsx scripts/analyze-logs.ts [options]
 Options:
   -f, --log-file <path>     Path to debug log file (default: ~/.pair/logs/pair-debug.log)
   -o, --output <format>     Output format: text, mermaid, json (default: text)
-  -a, --actor <actor>       Filter by actor: System, Architect, Navigator, Driver
+  -a, --actor <actor>       Filter by actor: System, Navigator, Driver
   -t, --time-range <range>  Filter by time range (format: HH:MM-HH:MM)
   -s, --save <path>         Save output to file
   --hide-noise             Hide repetitive system events (iterations, sse posts, etc.)
   --tools-only             Show only tool use/result events
-  --include-architect      Include architect planning phase (hidden by default)
+  --include-planning       Include planning phase (hidden by default)
   -h, --help               Show this help
 
 Examples:
@@ -168,10 +169,10 @@ async function main() {
 
     switch (options.output) {
       case 'text':
-        output = analyzer.generateTextSequenceDiagram(events, options.includeArchitect);
+        output = analyzer.generateTextSequenceDiagram(events, options.includePlanning);
         break;
       case 'mermaid':
-        output = analyzer.generateMermaidSequenceDiagram(events, options.includeArchitect);
+        output = analyzer.generateMermaidSequenceDiagram(events, options.includePlanning);
         break;
       case 'json':
         output = JSON.stringify(events, null, 2);
