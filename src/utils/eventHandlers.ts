@@ -2,7 +2,6 @@
  * Event handler setup for agent display coordination
  */
 
-import type { Architect } from "../conversations/Architect.js";
 import type { Driver } from "../conversations/Driver.js";
 import type { Navigator } from "../conversations/Navigator.js";
 import type { InkDisplayManager } from "../display.js";
@@ -10,8 +9,8 @@ import type { Logger } from "./logger.js";
 
 export class EventHandlersManager {
 	constructor(
-		private architect: Architect,
-		private navigator: Navigator,
+		private planningNavigator: Navigator, // Used during planning phase
+		private monitoringNavigator: Navigator, // Used during monitoring phase
 		private driver: Driver,
 		private display: InkDisplayManager,
 		private logger: Logger,
@@ -22,25 +21,25 @@ export class EventHandlersManager {
 	 * Set up event handlers for display
 	 */
 	setup(): void {
-		// Architect events
-		this.architect.on("message", (message) => {
-			this.display.showArchitectTurn(message.content);
+		// Planning navigator events
+		this.planningNavigator.on("message", (message) => {
+			this.display.showPlanningTurn(message.content);
 		});
 
-		this.architect.on("tool_use", ({ tool, input }) => {
-			this.display.showToolUse("architect", tool, input);
-			this.logger.logToolUse("architect", tool, input);
+		this.planningNavigator.on("tool_use", ({ tool, input }) => {
+			this.display.showToolUse("navigator", tool, input);
+			this.logger.logToolUse("navigator-planning", tool, input);
 		});
 
-		// Navigator events
-		this.navigator.on("message", (message) => {
+		// Monitoring navigator events
+		this.monitoringNavigator.on("message", (message) => {
 			if (this.display.getPhase && this.display.getPhase() === "complete") {
 				return;
 			}
 			this.display.showNavigatorTurn(message.content);
 		});
 
-		this.navigator.on("tool_use", ({ tool, input }) => {
+		this.monitoringNavigator.on("tool_use", ({ tool, input }) => {
 			this.display.showToolUse("navigator", tool, input);
 			this.logger.logToolUse("navigator", tool, input);
 		});

@@ -239,7 +239,7 @@ export class ClaudeCodeProvider extends BaseEmbeddedProvider {
 	}
 
 	/**
-	 * Create a new Claude Code session (for Architect)
+	 * Create a new Claude Code session (for planning phase)
 	 */
 	createSession(options: SessionOptions): AgentSession {
 		// Pass model ID through options if configured

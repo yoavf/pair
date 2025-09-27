@@ -2,7 +2,7 @@
 
 ## Overview
 
-Pair Claude implements a multi-agent pair programming system with three distinct roles: Architect (planning), Navigator (review/safety), and Driver (implementation). The system uses MCP (Model Context Protocol) servers for inter-agent communication, enabling language-agnostic agent swapping.
+Pair Claude implements a multi-agent pair programming system with two distinct roles: Navigator (planning and review/safety) and Driver (implementation). The Navigator handles both the initial planning phase and the monitoring/review phase with separate sessions for context isolation. The system uses MCP (Model Context Protocol) servers for inter-agent communication, enabling language-agnostic agent swapping.
 
 ## Architecture Diagram
 

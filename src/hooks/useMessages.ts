@@ -8,7 +8,6 @@ import type {
 } from "../types.js";
 
 const UNKNOWN_PROVIDERS: AgentProviders = {
-	architect: "unknown",
 	navigator: "unknown",
 	driver: "unknown",
 };

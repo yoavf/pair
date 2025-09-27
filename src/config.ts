@@ -51,7 +51,7 @@ RULES:
 
 // Turn limits for agent conversations
 export const TURN_LIMITS = {
-	ARCHITECT: 50, // High limit for plan creation
+	PLAN: 50, // High limit for plan creation (used by Navigator in planning phase)
 	NAVIGATOR: 20, // Navigator code reviews (increased for verification steps)
 	DRIVER: 10, // Driver implementation batches (increased from 4 to prevent stalling)
 } as const;

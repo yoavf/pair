@@ -23,9 +23,6 @@ export interface AppConfig {
 	/** Enable sync status updates in footer (default: true) */
 	enableSyncStatus: boolean;
 
-	/** Model configuration for architect agent */
-	architectConfig: ModelConfig;
-
 	/** Model configuration for navigator agent */
 	navigatorConfig: ModelConfig;
 
@@ -40,13 +37,9 @@ export const DEFAULT_CONFIG: AppConfig = {
 	maxPromptFileSize: 100 * 1024, // 100KB
 	sessionHardLimitMs: 30 * 60 * 1000, // 30 minutes
 	enableSyncStatus: true, // Enable by default
-	architectConfig: {
-		provider: "claude-code",
-		model: "claude-opus-4-1-20250805", // Opus 4.1 for planning
-	},
 	navigatorConfig: {
 		provider: "claude-code",
-		model: "claude-sonnet-4-20250514",
+		model: "claude-opus-4-1-20250805", // Opus 4.1 for both planning and monitoring
 	},
 	driverConfig: {
 		provider: "claude-code",
@@ -77,7 +70,6 @@ export function loadConfig(): AppConfig {
 			60 *
 			1000,
 		enableSyncStatus: process.env.CLAUDE_PAIR_DISABLE_SYNC_STATUS !== "true",
-		architectConfig: { ...DEFAULT_CONFIG.architectConfig },
 		navigatorConfig: { ...DEFAULT_CONFIG.navigatorConfig },
 		driverConfig: { ...DEFAULT_CONFIG.driverConfig },
 	};
@@ -123,7 +115,6 @@ export function validateConfig(
 	// Validate provider types if available providers list is provided
 	if (availableProviders) {
 		const configs = [
-			{ name: "architect", config: config.architectConfig },
 			{ name: "navigator", config: config.navigatorConfig },
 			{ name: "driver", config: config.driverConfig },
 		];

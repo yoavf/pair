@@ -29,7 +29,6 @@ export const OpenCodeOptionsSchema = z
 			.optional(),
 		agents: z
 			.object({
-				architect: z.string().optional(),
 				navigator: z.string().optional(),
 				driver: z.string().optional(),
 			})
@@ -69,7 +68,6 @@ export interface ModelConfig {
 }
 
 export interface AgentNames {
-	architect?: string;
 	navigator?: string;
 	driver?: string;
 }
@@ -91,7 +89,7 @@ export interface OpenCodeProviderConfig {
 }
 
 export interface SessionConfigBase {
-	role: "architect" | "navigator" | "driver";
+	role: "navigator" | "driver" | "planning";
 	systemPrompt: string;
 	directory?: string;
 	model: ModelConfig;
@@ -102,7 +100,7 @@ export interface SessionConfigBase {
 }
 
 export type StreamingSessionConfig = SessionConfigBase;
-export type ArchitectSessionConfig = SessionConfigBase;
+export type PlanningSessionConfig = SessionConfigBase;
 
 export interface ServerOptions {
 	hostname?: string;

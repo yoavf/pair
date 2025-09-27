@@ -7,8 +7,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EventHandlersManager } from "../../../src/utils/eventHandlers.js";
 
 describe("EventHandlersManager", () => {
-	let mockArchitect: any;
-	let mockNavigator: any;
+	let mockPlanningNavigator: any;
+	let mockMonitoringNavigator: any;
 	let mockDriver: any;
 	let mockDisplay: any;
 	let mockLogger: any;
@@ -16,11 +16,11 @@ describe("EventHandlersManager", () => {
 	let eventHandlers: EventHandlersManager;
 
 	beforeEach(() => {
-		mockArchitect = new EventEmitter();
-		mockNavigator = new EventEmitter();
+		mockPlanningNavigator = new EventEmitter();
+		mockMonitoringNavigator = new EventEmitter();
 		mockDriver = new EventEmitter();
 		mockDisplay = {
-			showArchitectTurn: vi.fn(),
+			showPlanningTurn: vi.fn(),
 			showNavigatorTurn: vi.fn(),
 			showDriverTurn: vi.fn(),
 			showToolUse: vi.fn(),
@@ -32,8 +32,8 @@ describe("EventHandlersManager", () => {
 		mockAddToDriverBuffer = vi.fn();
 
 		eventHandlers = new EventHandlersManager(
-			mockArchitect,
-			mockNavigator,
+			mockPlanningNavigator,
+			mockMonitoringNavigator,
 			mockDriver,
 			mockDisplay,
 			mockLogger,
@@ -112,8 +112,8 @@ describe("EventHandlersManager", () => {
 		});
 	});
 
-	describe("Navigator and Architect Tool Events", () => {
-		it("should handle navigator tool events", () => {
+	describe("Navigator Tool Events", () => {
+		it("should handle monitoring navigator tool events", () => {
 			eventHandlers.setup();
 
 			const toolEvent = {
@@ -121,7 +121,7 @@ describe("EventHandlersManager", () => {
 				input: { comment: "Approved", requestId: "req-123" },
 			};
 
-			mockNavigator.emit("tool_use", toolEvent);
+			mockMonitoringNavigator.emit("tool_use", toolEvent);
 
 			expect(mockDisplay.showToolUse).toHaveBeenCalledWith(
 				"navigator",
@@ -130,7 +130,7 @@ describe("EventHandlersManager", () => {
 			);
 		});
 
-		it("should handle architect tool events", () => {
+		it("should handle planning navigator tool events", () => {
 			eventHandlers.setup();
 
 			const toolEvent = {
@@ -138,10 +138,10 @@ describe("EventHandlersManager", () => {
 				input: { file_path: "/test/file.ts" },
 			};
 
-			mockArchitect.emit("tool_use", toolEvent);
+			mockPlanningNavigator.emit("tool_use", toolEvent);
 
 			expect(mockDisplay.showToolUse).toHaveBeenCalledWith(
-				"architect",
+				"navigator",
 				"Read",
 				{ file_path: "/test/file.ts" }
 			);

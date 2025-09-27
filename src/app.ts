@@ -11,7 +11,6 @@ import {
 	PLANNING_NAVIGATOR_PROMPT,
 	TURN_LIMITS,
 } from "./config.js";
-import { Architect } from "./conversations/Architect.js";
 import { Driver } from "./conversations/Driver.js";
 import { Navigator } from "./conversations/Navigator.js";
 import { InkDisplayManager } from "./display.js";
@@ -49,7 +48,6 @@ function resolveProjectPath(projectPath: string): string {
 }
 
 export class PairApp {
-	private architect!: Architect;
 	private navigator!: Navigator;
 	private driver!: Driver;
 	private display!: InkDisplayManager;
@@ -111,13 +109,6 @@ export class PairApp {
 		});
 
 		// Create providers for all agents
-		const architectProvider = agentProviderFactory.createProvider(
-			makeProviderConfig(
-				this.appConfig.architectConfig.provider,
-				this.appConfig.architectConfig.model,
-			),
-		) as EmbeddedAgentProvider;
-		this.providers.push(architectProvider);
 
 		const navigatorProvider = agentProviderFactory.createProvider(
 			makeProviderConfig(
@@ -135,18 +126,19 @@ export class PairApp {
 		) as EmbeddedAgentProvider;
 		this.providers.push(driverProvider);
 
-		// Create agents with providers
-		this.architect = new Architect(
+		// Create navigator for planning phase (will create fresh instance for monitoring)
+		this.navigator = new Navigator(
 			PLANNING_NAVIGATOR_PROMPT,
 			["Read", "Grep", "Glob", "WebSearch", "WebFetch", "TodoWrite", "Bash"],
-			TURN_LIMITS.ARCHITECT,
+			TURN_LIMITS.PLAN,
 			this.projectPath,
 			this.logger,
-			architectProvider,
-			"", // Architect doesn't use MCP server for this approach
+			navigatorProvider,
+			"", // Planning phase doesn't use MCP server
 		);
 
-		this.navigator = new Navigator(
+		// This will be replaced with a fresh navigator for monitoring
+		const monitoringNavigator = new Navigator(
 			MONITORING_NAVIGATOR_PROMPT,
 			// Read-only tools + Bash(git diff/*, git status/*) and TodoWrite for status
 			[
@@ -167,9 +159,9 @@ export class PairApp {
 			navUrl,
 		);
 
-		// Initialize permission handler
+		// Initialize permission handler with monitoring navigator
 		this.permissionHandler = new PermissionHandler(
-			this.navigator,
+			monitoringNavigator,
 			this.display,
 			this.logger,
 		);
@@ -204,17 +196,17 @@ export class PairApp {
 		};
 		this.implementationLoop = new ImplementationLoop(
 			this.driver,
-			this.navigator,
+			monitoringNavigator,
 			this.display,
 			this.logger,
 			loopConfig,
 			(message) => this.stopAllAndExit(message),
 		);
 
-		// Initialize event handlers
+		// Initialize event handlers (will set up for monitoring phase)
 		this.eventHandlers = new EventHandlersManager(
-			this.architect,
-			this.navigator,
+			this.navigator, // planning navigator initially
+			monitoringNavigator,
 			this.driver,
 			this.display,
 			this.logger,
@@ -226,11 +218,18 @@ export class PairApp {
 		this.eventHandlers.setup();
 
 		try {
-			this.logger.logEvent("APP_ARCHITECT_STARTING", {
+			this.logger.logEvent("APP_PLANNING_STARTING", {
 				task: this.task.substring(0, 100),
 			});
-			const plan = await this.architect.createPlan(this.task);
-			this.logger.logEvent("APP_ARCHITECT_RETURNED", {
+			const plan = await this.navigator.createPlan(this.task);
+			this.logger.logEvent("APP_PLANNING_RETURNED", {
+				hasPlan: !!plan,
+				planLength: plan?.length || 0,
+			});
+
+			// Replace navigator with fresh monitoring instance
+			this.navigator = monitoringNavigator;
+			this.logger.logEvent("APP_NAVIGATOR_SWITCHED_TO_MONITORING", {
 				hasPlan: !!plan,
 				planLength: plan?.length || 0,
 			});

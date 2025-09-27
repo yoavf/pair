@@ -1,18 +1,18 @@
 # Pair
 
-Pair is a CLI utility that orchestrates coding agents working together in a pair programming session. The architect, navigator, and driver roles can each run on different providers, including Claude Code and the OpenCode SDK.
+Pair is a CLI utility that orchestrates coding agents working together in a pair programming session. The navigator and driver roles can each run on different providers, including Claude Code and the OpenCode SDK.
 
 ## Overview
 
-This tool creates a collaborative coding session with two agent instances working together.
+This tool creates a collaborative coding session with two agent roles working together.
 
-- The session starts with a **Planning** phase where a plan is formulated by the Architect.
-- The plan is then passed to the Driver for **implementation**.
+- The session starts with a **Planning** phase where the Navigator formulates a plan.
+- The plan is then passed to the Driver for **implementation** with a fresh Navigator instance monitoring.
 - The Navigator acts in two moments only:
   - Approving/denying file modifications when the Driver requests an edit (Approve / Deny).
   - Performing a code review when the Driver explicitly asks (CodeReview pass=true|false, then Complete).
 
-The Navigator stays otherwise silent; the Driver makes actual changes and progresses continuously.
+The Navigator stays otherwise silent during implementation; the Driver makes actual changes and progresses continuously.
 
 ## Installation
 

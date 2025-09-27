@@ -19,8 +19,7 @@ interface Props {
 const _InkApp: React.FC<Props> = ({ projectPath, initialTask, onExit }) => {
 	// Default models configuration for standalone usage
 	const defaultModels = {
-		architect: { provider: "claude-code", model: "opus-4.1" },
-		navigator: { provider: "claude-code", model: undefined },
+		navigator: { provider: "claude-code", model: "opus-4.1" },
 		driver: { provider: "claude-code", model: undefined },
 	};
 	const { state } = useMessages(
@@ -61,12 +60,10 @@ export class InkDisplayManager {
 		// Create a wrapper component that exposes the hooks
 		const AppWrapper: React.FC = () => {
 			const providers = {
-				architect: config.architectConfig.provider,
 				navigator: config.navigatorConfig.provider,
 				driver: config.driverConfig.provider,
 			};
 			const models = {
-				architect: config.architectConfig,
 				navigator: config.navigatorConfig,
 				driver: config.driverConfig,
 			};
@@ -147,12 +144,12 @@ export class InkDisplayManager {
 		this.appendMessage(message);
 	}
 
-	showArchitectTurn(content: string) {
+	showPlanningTurn(content: string) {
 		const message: Message = {
 			role: "assistant",
 			content,
 			timestamp: new Date(),
-			sessionRole: "architect",
+			sessionRole: "navigator",
 		};
 		this.appendMessage(message);
 	}

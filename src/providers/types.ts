@@ -140,7 +140,7 @@ export interface SessionOptions {
 	maxTurns: number;
 	projectPath: string;
 	mcpServerUrl: string;
-	role?: "navigator" | "driver"; // Explicit role instead of URL parsing (optional for Architect)
+	role?: "navigator" | "driver"; // Explicit role instead of URL parsing (optional for planning)
 	canUseTool?: (
 		toolName: string,
 		input: Record<string, unknown>,
@@ -194,7 +194,7 @@ export interface EmbeddedAgentProvider extends AgentProvider {
 	readonly type: "embedded";
 
 	/**
-	 * Create a new session with the agent (for Architect)
+	 * Create a new session with the agent (for planning phase)
 	 */
 	createSession(options: SessionOptions): AgentSession;
 
