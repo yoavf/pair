@@ -238,14 +238,18 @@ export class LogAnalyzer {
 					break;
 
 				case "EVENT":
-					if (entry.event?.includes("ARCHITECT")) {
-						actor = "Architect";
+					if (
+						entry.event?.includes("ARCHITECT") ||
+						entry.event?.includes("PLANNING")
+					) {
+						actor = "Planning"; // Map old architect events to planning
 						if (entry.event.includes("PLAN_CREATED")) {
 							action = "Creates plan";
 							details = `Plan length: ${entry.data?.planLength} chars, ${entry.data?.turnCount} turns`;
 						} else {
 							action = entry.event
 								.replace("ARCHITECT_", "")
+								.replace("PLANNING_", "")
 								.toLowerCase()
 								.replace(/_/g, " ");
 						}
@@ -532,7 +536,8 @@ export class LogAnalyzer {
 		const normalized = actor.toLowerCase();
 		switch (normalized) {
 			case "architect":
-				return "Architect";
+			case "planning":
+				return "Planning";
 			case "navigator":
 				return "Navigator";
 			case "driver":
