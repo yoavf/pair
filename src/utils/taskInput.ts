@@ -14,21 +14,31 @@ export async function getTaskFromUser(): Promise<string> {
 	});
 
 	console.log("Enter the task for Claude to pair code on.");
-	console.log(
-		"Type your prompt (can be multiple lines). Press Ctrl+D (Linux/Mac) or Ctrl+Z (Windows) when finished:",
-	);
+	console.log("(Use \\ + Enter for line breaks, or just Enter to submit)");
 	console.log("");
 
 	return new Promise((resolve) => {
 		const lines: string[] = [];
 
-		rl.on("line", (input) => {
-			lines.push(input);
-		});
+		const promptForInput = () => {
+			const prompt = lines.length === 0 ? "> " : "  ";
+			rl.question(prompt, (input) => {
+				// Check if input ends with \ for line continuation
+				if (input.endsWith("\\")) {
+					// Remove the trailing \ and add this line
+					lines.push(input.slice(0, -1));
+					// Continue to next line
+					promptForInput();
+				} else {
+					// Add the final line and submit
+					lines.push(input);
+					rl.close();
+					const result = lines.join("\n").trim();
+					resolve(result);
+				}
+			});
+		};
 
-		rl.on("close", () => {
-			const result = lines.join("\n").trim();
-			resolve(result);
-		});
+		promptForInput();
 	});
 }
