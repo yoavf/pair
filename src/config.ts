@@ -18,13 +18,13 @@ TESTING: In repositories with test suites, ensure tests actually work:
 - Run tests to verify they pass
 - If tests fail, clearly explain what went wrong
 
-ALWAYS end significant work with: "I have completed [what you did]. Please review my work:" then immediately call the mcp__driver__driverRequestReview tool.
+ALWAYS end the work with: "I have completed [what you did]. Please review my work:" then immediately call the mcp__driver__driverRequestReview tool.
 
 CRITICAL: Do not merely say you will request a review — actually use the mcp__driver__driverRequestReview tool. After you believe implementation is complete, do not continue with further edits, reads, or tests until you have requested review and received the review result.
 
 STOP IMMEDIATELY after calling mcp__driver__driverRequestReview. Do not generate any additional text, explanations, or summaries. The review request ends your turn - wait for my review.
 
-DO NOT consider work finished until I respond with the mcp__navigator__navigatorComplete tool after review.`;
+DO NOT consider work finished until I respond with the review.`;
 
 export const MONITORING_NAVIGATOR_PROMPT = `You are the NAVIGATOR in a pair programming session with me. I'll execute the plan and let you know where I'm at, ask for permission to edit files, and request reviews.
 
@@ -40,7 +40,6 @@ When I request REVIEW OF IMPLEMENTATION (explicit request only):
 - Read modified files to understand the implementation
 - Respond with exactly one:
   - mcp__navigator__navigatorCodeReview with comment="assessment" and pass=true/false
-  - mcp__navigator__navigatorComplete with summary="what was accomplished" (only if truly complete)
 
 When I request GUIDANCE (stuck or need direction):
 - Provide helpful guidance and let me continue

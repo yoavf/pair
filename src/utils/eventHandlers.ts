@@ -29,10 +29,7 @@ export class EventHandlersManager {
 
 		this.architect.on("tool_use", ({ tool, input }) => {
 			this.display.showToolUse("architect", tool, input);
-			this.logger.logEvent("ARCHITECT_TOOL_USE", {
-				tool,
-				inputKeys: Object.keys(input || {}),
-			});
+			this.logger.logToolUse("architect", tool, input);
 		});
 
 		// Navigator events
@@ -45,10 +42,7 @@ export class EventHandlersManager {
 
 		this.navigator.on("tool_use", ({ tool, input }) => {
 			this.display.showToolUse("navigator", tool, input);
-			this.logger.logEvent("NAVIGATOR_TOOL_USE", {
-				tool,
-				inputKeys: Object.keys(input || {}),
-			});
+			this.logger.logToolUse("navigator", tool, input);
 		});
 
 		// Driver events
@@ -59,12 +53,11 @@ export class EventHandlersManager {
 			if (t) this.addToDriverBuffer(t);
 		});
 
-		this.driver.on("tool_use", ({ tool, input }) => {
-			this.display.showToolUse("driver", tool, input);
-			this.logger.logEvent("DRIVER_TOOL_USE", {
-				tool,
-				inputKeys: Object.keys(input || {}),
-			});
+		this.driver.on("tool_use", ({ tool, input, trackingId }) => {
+			// Preserve trackingId in params for display to use for review coordination
+			const inputWithTracking = trackingId ? { ...input, trackingId } : input;
+			this.display.showToolUse("driver", tool, inputWithTracking);
+			this.logger.logToolUse("driver", tool, input);
 			// Summarize tool usage line for buffered transcript
 			try {
 				const file = input?.file_path || input?.path || "";

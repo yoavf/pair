@@ -179,7 +179,7 @@ describe('Navigator permission approvals', () => {
     );
   });
 
-  it('treats approve tool as code review pass outside permission flow', async () => {
+  it('ignores approve tool outside permission flow', async () => {
     const messages: AgentMessage[] = [
       {
         type: 'assistant',
@@ -208,6 +208,9 @@ describe('Navigator permission approvals', () => {
           ],
         },
       },
+      {
+        type: 'result',
+      },
     ];
 
     const provider = new StubProvider(messages);
@@ -228,12 +231,7 @@ describe('Navigator permission approvals', () => {
       'Please review the latest changes.',
     );
 
-    expect(commands).not.toBeNull();
-    expect(commands).toHaveLength(1);
-    expect(commands![0]).toEqual({
-      type: 'code_review',
-      pass: true,
-      comment: 'Looks good overall.',
-    });
+    // Approve tools outside permission flow should be ignored to prevent multiple completion commands
+    expect(commands).toBeNull();
   });
 });

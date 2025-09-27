@@ -19,9 +19,8 @@ Use git diff / read tools to double check my work.
 
 CRITICAL: You MUST respond with EXACTLY ONE MCP tool call:
 - mcp__navigator__navigatorCodeReview with comment="assessment" and pass=true/false
-- mcp__navigator__navigatorComplete with summary="what was accomplished"
 
-Only mcp__navigator__navigatorCodeReview OR mcp__navigator__navigatorComplete. No text.`;
+Only mcp__navigator__navigatorCodeReview. No text.`;
 
 export const NAVIGATOR_CONTINUE_PROMPT_TEMPLATE = `{driverMessage}
 
@@ -52,9 +51,7 @@ export class NavigatorUtils {
 	 * Check if command indicates session should end
 	 */
 	static shouldEndSession(command: NavigatorCommand): boolean {
-		if (command.type === "complete") return true;
-		if (command.type === "code_review" && command.pass === true) return true;
-		return false;
+		return command.type === "code_review" && command.pass === true;
 	}
 
 	/**
@@ -76,8 +73,6 @@ export class NavigatorUtils {
 		if (toolName.includes("deny")) return "mcp__navigator__navigatorDeny";
 		if (toolName.includes("review"))
 			return "mcp__navigator__navigatorCodeReview";
-		if (toolName.includes("complete"))
-			return "mcp__navigator__navigatorComplete";
 		return toolName;
 	}
 }

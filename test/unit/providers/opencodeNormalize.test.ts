@@ -9,8 +9,8 @@ import {
 
 describe("OpenCode tool normalization", () => {
 	it("maps pair-* navigator tools to canonical names", () => {
-		expect(mapPartToolName("pair-navigator_navigatorComplete")).toBe(
-			"mcp__navigator__navigatorComplete",
+		expect(mapPartToolName("pair-navigator_navigatorCodeReview")).toBe(
+			"mcp__navigator__navigatorCodeReview",
 		);
 		expect(mapPartToolName("pair-driver_driverRequestReview")).toBe(
 			"mcp__driver__driverRequestReview",

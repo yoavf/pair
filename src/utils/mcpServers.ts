@@ -10,17 +10,11 @@ import {
 	driverRequestReview,
 	navigatorApprove,
 	navigatorCodeReview,
-	navigatorComplete,
 	navigatorDeny,
 } from "./mcpTools.js";
 
 // Tool arrays for deriving names (to prevent tool/name mismatches)
-const navigatorTools = [
-	navigatorCodeReview,
-	navigatorComplete,
-	navigatorApprove,
-	navigatorDeny,
-];
+const navigatorTools = [navigatorCodeReview, navigatorApprove, navigatorDeny];
 
 const driverTools = [driverRequestReview, driverRequestGuidance];
 

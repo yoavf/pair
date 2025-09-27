@@ -96,42 +96,44 @@ export class Architect extends EventEmitter {
 					turnCount++;
 					const content = message.message.content;
 
-					if (Array.isArray(content)) {
-						let _fullText = "";
+					if (!Array.isArray(content)) {
+						return null;
+					}
 
-						for (const item of content) {
-							if (item.type === "text") {
-								const text = item.text ?? "";
-								_fullText += `${text}\n`;
+					let _fullText = "";
 
-								// Emit for display
-								this.emit("message", {
-									role: "assistant",
-									content: text,
-									sessionRole: "architect" as Role,
-									timestamp: new Date(),
-								});
-							} else if (item.type === "tool_use") {
-								// Emit tool usage
-								this.emit("tool_use", {
-									role: "architect" as Role,
-									tool: item.name,
-									input: item.input,
-								});
-							}
+					for (const item of content) {
+						if (item.type === "text") {
+							const text = item.text ?? "";
+							_fullText += `${text}\n`;
+
+							// Emit for display
+							this.emit("message", {
+								role: "assistant",
+								content: text,
+								sessionRole: "architect" as Role,
+								timestamp: new Date(),
+							});
+						} else if (item.type === "tool_use") {
+							// Emit tool usage
+							this.emit("tool_use", {
+								role: "architect" as Role,
+								tool: item.name,
+								input: item.input,
+							});
 						}
+					}
 
-						// Use provider-specific completion detection
-						if (this.detectPlanCompletion) {
-							const detectedPlan = this.detectPlanCompletion(message);
-							if (detectedPlan) {
-								plan = detectedPlan;
-								this.logger.logEvent("ARCHITECT_PLAN_CREATED", {
-									planLength: (plan ?? "").length,
-									turnCount,
-								});
-								return plan;
-							}
+					// Use provider-specific completion detection
+					if (this.detectPlanCompletion) {
+						const detectedPlan = this.detectPlanCompletion(message);
+						if (detectedPlan) {
+							plan = detectedPlan;
+							this.logger.logEvent("ARCHITECT_PLAN_CREATED", {
+								planLength: (plan ?? "").length,
+								turnCount,
+							});
+							return plan;
 						}
 					}
 				}
@@ -144,11 +146,6 @@ export class Architect extends EventEmitter {
 				maxTurns: this.maxTurns,
 				hasPlan: !!plan,
 				planLength: (plan ?? "").length,
-			});
-
-			// Marker to verify control remains in createPlan after completion log
-			this.logger.logEvent("ARCHITECT_POST_COMPLETION_MARK", {
-				reached: true,
 			});
 
 			// Check if we got a valid plan
@@ -171,11 +168,6 @@ export class Architect extends EventEmitter {
 					);
 				}
 			}
-
-			this.logger.logEvent("ARCHITECT_PLAN_VALIDATION_PASSED", {
-				planLength: String(plan ?? "").length,
-				stopReason,
-			});
 
 			this.logger.logEvent("ARCHITECT_RETURNING_PLAN", {
 				planLength: String(plan ?? "").length,

@@ -87,6 +87,15 @@ export class ImplementationLoop {
 				driverCommands.length > 0 ? driverCommands[0] : null;
 			const dcType = driverCommand?.type;
 
+			this.logger.logEvent("IMPLEMENTATION_LOOP_LOOP_STATE", {
+				loopCount,
+				awaitingReviewDecision,
+				awaitingDriverResponseAfterGuidance,
+				driverCommandType: dcType ?? null,
+				driverCommandCount: driverCommands.length,
+				driverProducedOutput,
+			});
+
 			// Guardrail: if driver text indicates completion intent but no review tool was called, nudge to request review immediately
 			if (!dcType && !awaitingReviewDecision) {
 				const combinedDriverText = (driverMessages || [])
@@ -104,16 +113,34 @@ export class ImplementationLoop {
 			}
 
 			if (dcType === "request_review") {
+				// Immediately stop the driver session to prevent it from producing more output while waiting for review
+				this.logger.logEvent("IMPLEMENTATION_LOOP_DRIVER_STOP_FOR_REVIEW", {});
+				await this.driver.stop();
+
 				const reviewResult = await this.handleReviewRequest(
 					driverCommand,
 					driverMessages,
 				);
 				awaitingReviewDecision = reviewResult.awaitingDecision;
+				if (reviewResult.awaitingDecision) {
+					this.logger.logEvent("IMPLEMENTATION_LOOP_REVIEW_WAITING", {
+						driverCommandContextLength: driverCommand?.context?.length ?? 0,
+					});
+				} else {
+					this.logger.logEvent("IMPLEMENTATION_LOOP_REVIEW_RESULT", {
+						shouldEnd: reviewResult.shouldEnd,
+						hasReviewComments: !!reviewResult.reviewComments,
+						endSummaryLength: reviewResult.endSummary?.length ?? 0,
+					});
+				}
 				if (reviewResult.shouldEnd) {
 					await this.onExit(reviewResult.endSummary);
 					return;
 				}
 				if (reviewResult.reviewComments) {
+					this.logger.logEvent("IMPLEMENTATION_LOOP_REVIEW_FEEDBACK", {
+						reviewLength: reviewResult.reviewComments.length,
+					});
 					driverMessages = await this.driver.continueWithFeedback(
 						reviewResult.reviewComments,
 					);
@@ -131,6 +158,10 @@ export class ImplementationLoop {
 			} else {
 				// Default path: simply continue (unless we're waiting on a review decision or guidance follow-up)
 				if (awaitingReviewDecision || awaitingDriverResponseAfterGuidance) {
+					this.logger.logEvent("IMPLEMENTATION_LOOP_WAITING", {
+						awaitingReviewDecision,
+						awaitingDriverResponseAfterGuidance,
+					});
 					await new Promise((resolve) => setTimeout(resolve, 500));
 					continue;
 				}
@@ -151,6 +182,11 @@ export class ImplementationLoop {
 		reviewComments?: string;
 	}> {
 		this.logger.logEvent("IMPLEMENTATION_LOOP_REVIEW_REQUESTED", {});
+		this.logger.logEvent("IMPLEMENTATION_LOOP_REVIEW_REQUEST", {
+			driverBufferLength: this.driverBuffer.length,
+			driverMessagesCount: driverMessages.length,
+			driverCommandContextLength: driverCommand?.context?.length ?? 0,
+		});
 		const combinedMessage = Driver.combineMessagesForNavigator([
 			...this.driverBuffer,
 			...driverMessages,
@@ -205,7 +241,11 @@ export class ImplementationLoop {
 
 					if (Navigator.shouldEndSession(cmd)) {
 						shouldEnd = true;
-						endSummary = cmd.type === "complete" ? cmd.summary : cmd.comment;
+						if (cmd.type === "code_review" && cmd.pass) {
+							endSummary = cmd.comment;
+						} else {
+							endSummary = cmd.comment;
+						}
 					}
 				}
 
@@ -238,6 +278,7 @@ export class ImplementationLoop {
 				}
 			} else {
 				// Handle retry logic for navigator decisions
+				this.logger.logEvent("IMPLEMENTATION_LOOP_NAVIGATOR_RETRY_PATH", {});
 				return await this.handleNavigatorRetry(messageForNavigator);
 			}
 		}
@@ -254,9 +295,10 @@ export class ImplementationLoop {
 		// If no commands, re-prompt the navigator until we get a decision (bounded retries)
 		this.display.updateStatus("Waiting for review decision…");
 		let attempts = 0;
+		this.logger.logEvent("IMPLEMENTATION_LOOP_NAVIGATOR_RETRY_START", {});
 		while (attempts < 5) {
 			attempts++;
-			const retryPrompt = `${messageForNavigator}\n\nSTRICT: Respond with exactly one MCP tool call: mcp__navigator__navigatorCodeReview OR mcp__navigator__navigatorComplete. No other text.`;
+			const retryPrompt = `${messageForNavigator}\n\nSTRICT: Respond with exactly one MCP tool call: mcp__navigator__navigatorCodeReview. No other text.`;
 			const retryResp = await this.navigator.processDriverMessage(
 				retryPrompt,
 				true,
@@ -268,6 +310,10 @@ export class ImplementationLoop {
 					: [];
 
 			if (cmds.length > 0) {
+				this.logger.logEvent("IMPLEMENTATION_LOOP_NAVIGATOR_RETRY_RESPONDED", {
+					attempts,
+					commandTypes: cmds.map((cmd) => cmd.type),
+				});
 				const reviewParts: string[] = [];
 				let shouldEnd = false;
 				let endSummary: string | undefined;
@@ -290,11 +336,18 @@ export class ImplementationLoop {
 
 					if (Navigator.shouldEndSession(cmd)) {
 						shouldEnd = true;
-						endSummary = cmd.type === "complete" ? cmd.summary : cmd.comment;
+						if (cmd.type === "code_review" && cmd.pass) {
+							endSummary = cmd.comment;
+						} else {
+							endSummary = cmd.comment;
+						}
 					}
 				}
 
 				if (reviewParts.length > 0 && !shouldEnd) {
+					this.logger.logEvent("IMPLEMENTATION_LOOP_NAVIGATOR_RETRY_FEEDBACK", {
+						reviewLength: reviewParts.join("\n\n").length,
+					});
 					const reviewMessage = reviewParts.join("\n\n");
 					this.display.showTransfer("navigator", "driver", "Review comments");
 					this.display.setPhase("execution");
@@ -367,7 +420,7 @@ export class ImplementationLoop {
 			for (const cmd of navCommands) {
 				if (Navigator.shouldEndSession(cmd)) {
 					shouldEnd = true;
-					endReason = cmd.type === "complete" ? cmd.summary : cmd.comment;
+					endReason = cmd.comment;
 				}
 			}
 

@@ -17,7 +17,6 @@ const PERMISSION_TOOL_NAME_MAP: Record<string, string> = {
 	"pair-driver_driverRequestReview": "mcp__driver__driverRequestReview",
 	"pair-driver_driverRequestGuidance": "mcp__driver__driverRequestGuidance",
 	"pair-navigator_navigatorCodeReview": "mcp__navigator__navigatorCodeReview",
-	"pair-navigator_navigatorComplete": "mcp__navigator__navigatorComplete",
 	"pair-navigator_navigatorApprove": "mcp__navigator__navigatorApprove",
 	"pair-navigator_navigatorDeny": "mcp__navigator__navigatorDeny",
 	// Special planning tool for architect

@@ -3,9 +3,17 @@
  */
 
 export interface PermissionRequest {
+	requestId?: string;
 	driverTranscript: string;
 	toolName: string;
 	input: Record<string, unknown>;
+	toolId?: string;
+}
+
+export interface PermissionGuardOptions {
+	suggestions?: Record<string, unknown>;
+	toolId?: string;
+	metadata?: Record<string, unknown>;
 }
 
 export interface PermissionApproval {

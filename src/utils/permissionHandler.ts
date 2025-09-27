@@ -10,9 +10,13 @@ import {
 	PermissionMalformedError,
 	PermissionTimeoutError,
 } from "../types/errors.js";
-import type { PermissionRequest } from "../types/permission.js";
+import type {
+	PermissionGuardOptions,
+	PermissionRequest,
+} from "../types/permission.js";
 import type { Logger } from "./logger.js";
 import { createTimeout, TIMEOUT_CONFIG } from "./timeouts.js";
+import { toolTracker } from "./toolTracking.js";
 
 export class PermissionHandler {
 	constructor(
@@ -101,7 +105,7 @@ export class PermissionHandler {
 		return async (
 			toolName: string,
 			input: Record<string, unknown>,
-			_options?: { suggestions?: Record<string, unknown>; toolId?: string },
+			options?: PermissionGuardOptions,
 		): Promise<
 			| {
 					behavior: "allow";
@@ -120,6 +124,19 @@ export class PermissionHandler {
 			// Get driver transcript
 			const transcript = getDriverTranscript();
 
+			const providerCallId = options?.toolId;
+			const trackingId = providerCallId
+				? toolTracker.getToolIdByCallId(providerCallId)
+				: undefined;
+			const effectiveToolId = trackingId ?? providerCallId;
+			const metadata = options?.metadata ?? {};
+			const targetPath =
+				typeof metadata.file_path === "string"
+					? metadata.file_path
+					: typeof metadata.path === "string"
+						? metadata.path
+						: undefined;
+
 			// Display transfer to navigator for permission
 			this.display?.showTransfer("driver", "navigator", "Permission request");
 			this.display?.updateStatus(`Awaiting navigator approval: ${toolName}`);
@@ -127,19 +144,21 @@ export class PermissionHandler {
 				toolName,
 				inputKeys: Object.keys(input || {}),
 				transcriptPreview: transcript.slice(0, 200),
+				providerCallId,
+				trackingId,
+				targetPath,
 			});
 
 			const result = await this.requestPermissionWithTimeout({
 				driverTranscript: transcript,
 				toolName,
 				input,
-				toolId: _options?.toolId, // Pass tool ID if available
+				toolId: effectiveToolId, // Prefer tracked ID, fallback to provider call ID
 			} as PermissionRequest);
 
 			this.display?.showTransfer("navigator", "driver", "Decision");
-			this.display?.updateStatus(
-				result.allowed ? `Approved: ${toolName}` : `Denied: ${toolName}`,
-			);
+			// Clear the status since approval/denial is already shown in chat
+			this.display?.updateStatus("");
 			this.logger.logEvent("PERMISSION_DECISION", {
 				toolName,
 				allowed: result.allowed,

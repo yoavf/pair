@@ -47,7 +47,7 @@ export class NavigatorPermissionHandler {
 - mcp__navigator__navigatorApprove (if you approve this specific edit)
 - mcp__navigator__navigatorDeny (if you reject this specific edit)
 
-DO NOT call mcp__navigator__navigatorComplete or mcp__navigator__navigatorCodeReview for permission requests.`;
+DO NOT call mcp__navigator__navigatorCodeReview for permission requests.`;
 
 		const header =
 			!this.sessionId && this.plan && this.originalTask

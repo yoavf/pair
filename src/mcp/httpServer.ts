@@ -6,7 +6,6 @@ import {
 	driverRequestReview,
 	navigatorApprove,
 	navigatorCodeReview,
-	navigatorComplete,
 	navigatorDeny,
 } from "../utils/mcpTools.js";
 
@@ -34,12 +33,7 @@ export async function startPairMcpServer(
 	const navigatorServer = createSdkMcpServer({
 		name: "navigator",
 		version: "1.0.0",
-		tools: [
-			navigatorCodeReview,
-			navigatorComplete,
-			navigatorApprove,
-			navigatorDeny,
-		],
+		tools: [navigatorCodeReview, navigatorApprove, navigatorDeny],
 	}).instance;
 
 	const driverServer = createSdkMcpServer({
@@ -54,7 +48,6 @@ export async function startPairMcpServer(
 			port: port ?? 0,
 			navigatorTools: [
 				"mcp__navigator__navigatorCodeReview",
-				"mcp__navigator__navigatorComplete",
 				"mcp__navigator__navigatorApprove",
 				"mcp__navigator__navigatorDeny",
 			],

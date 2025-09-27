@@ -10,6 +10,19 @@ import type { Logger } from "../utils/logger.js";
 import { DRIVER_TOOL_NAMES, driverMcpServer } from "../utils/mcpServers.js";
 import { TIMEOUT_CONFIG, waitForCondition } from "../utils/timeouts.js";
 import { toolTracker } from "../utils/toolTracking.js";
+import {
+	convertMcpToolToDriverCommand,
+	hasRequestReview as hasRequestReviewUtil,
+} from "./driver/commandUtils.js";
+import {
+	combineMessagesForNavigator as combineMessagesUtil,
+	normalizeAssistantText,
+} from "./driver/textProcessor.js";
+import {
+	extractResultContent,
+	generateMessageId,
+	isApprovedEditTool,
+} from "./driver/toolUtils.js";
 
 /**
  * Driver agent - implements the plan with navigator reviews
@@ -28,8 +41,10 @@ export class Driver extends EventEmitter {
 	private driverCommands: DriverCommand[] = [];
 	private toolResults: Map<string, any> = new Map();
 	private toolIdMapping = new Map<string, string>(); // Maps tool_use_id to our tool ID
+	private toolNameMapping = new Map<string, string>(); // Maps tool_use_id to tool name
+	private lastPromptNormalized?: string;
 
-	// Optional canUseTool callback for permission-mode gating (SDK dynamic shapes)
+	// Optional canUseTool callback type for permission-mode gating (SDK dynamic shapes)
 	private canUseTool?: (
 		toolName: string,
 		input: UnknownRecord,
@@ -50,17 +65,7 @@ export class Driver extends EventEmitter {
 		private projectPath: string,
 		private logger: Logger,
 		private provider: EmbeddedAgentProvider,
-		_canUseTool?: (
-			toolName: string,
-			input: UnknownRecord,
-		) => Promise<
-			| {
-					behavior: "allow";
-					updatedInput: UnknownRecord;
-					updatedPermissions?: UnknownRecord;
-			  }
-			| { behavior: "deny"; message: string }
-		>,
+		_canUseTool?: typeof Driver.prototype.canUseTool,
 		private mcpServerUrl?: string,
 	) {
 		super();
@@ -81,6 +86,7 @@ export class Driver extends EventEmitter {
 		try {
 			await this.ensureStreamingQuery();
 			await this.waitForNoPendingTools();
+			this.lastPromptNormalized = normalizeAssistantText(implementMessage);
 			this.inputStream?.pushText(implementMessage);
 			const batch = await this.waitForBatch();
 			return batch;
@@ -119,6 +125,7 @@ export class Driver extends EventEmitter {
 			// Resume session with prompt
 			await this.ensureStreamingQuery();
 			await this.waitForNoPendingTools();
+			this.lastPromptNormalized = normalizeAssistantText(prompt);
 			this.inputStream?.pushText(prompt);
 			const batch = await this.waitForBatch();
 			return batch;
@@ -144,22 +151,14 @@ export class Driver extends EventEmitter {
 	 * This method will be updated by the orchestration logic to work with MCP tool events
 	 */
 	static hasRequestReview(_messages: string[]): DriverCommand | null {
-		// This will be replaced by MCP tool event detection in the orchestration layer
-		// For now, return null since MCP tools handle this communication
-		return null;
+		return hasRequestReviewUtil(_messages);
 	}
 
 	/**
 	 * Combine messages for sending to navigator
 	 */
 	static combineMessagesForNavigator(messages: string[]): string {
-		if (messages.length === 0) return "";
-
-		if (messages.length === 1) {
-			return messages[0];
-		}
-
-		return messages.map((msg) => `\n${msg}`).join("\n\n");
+		return combineMessagesUtil(messages);
 	}
 
 	/**
@@ -170,9 +169,7 @@ export class Driver extends EventEmitter {
 	}
 
 	private static generateMessageId(): string {
-		const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
-		const ts = Date.now().toString(36).slice(-2).toUpperCase();
-		return `${ts}${rand}`; // short, human-friendly
+		return generateMessageId();
 	}
 
 	private async ensureStreamingQuery() {
@@ -267,8 +264,9 @@ export class Driver extends EventEmitter {
 						let lastBashCmd: string | undefined;
 						for (const item of content) {
 							if (item.type === "text") {
-								uiText += `${item.text}\n`;
-								fwdText += `${item.text}\n`;
+								const chunk = (item.text ?? "").replace(/\r/g, "");
+								uiText += chunk;
+								fwdText += chunk;
 							} else if (item.type === "tool_use") {
 								// Generate a tracking ID for reviewable tools
 								let trackingId: string | undefined;
@@ -293,7 +291,21 @@ export class Driver extends EventEmitter {
 									// Map tool_use_id to tracking ID
 									if (trackingId) {
 										this.toolIdMapping.set(toolUseId, trackingId);
+										toolTracker.associateCallId(trackingId, toolUseId);
 									}
+
+									// Store tool name for result logging
+									if (item.name) {
+										this.toolNameMapping.set(toolUseId, item.name);
+									}
+
+									// Enhanced tool use logging
+									this.logger.logToolUse(
+										"driver",
+										item.name || "unknown",
+										item.input,
+										toolUseId,
+									);
 									this.logger.logEvent("DRIVER_TOOL_PENDING", {
 										id: toolUseId,
 										tool: item.name,
@@ -305,7 +317,6 @@ export class Driver extends EventEmitter {
 										this.logger.logEvent("DRIVER_TOOL_MISSING_NAME", {
 											item: JSON.stringify(item),
 										});
-										console.warn("Driver: tool_use item missing name:", item);
 									} else if (item.name.startsWith("mcp__driver__")) {
 										this.toolResults.set(toolUseId, {
 											toolName: item.name,
@@ -332,12 +343,9 @@ export class Driver extends EventEmitter {
 									lastBashCmd = String(item.input.command);
 								}
 								// Include tool summary in forwarded text (except already approved edit tools)
-								const isApprovedEditTool =
-									item.name === "Write" ||
-									item.name === "Edit" ||
-									item.name === "MultiEdit";
+								const isApproved = item.name && isApprovedEditTool(item.name);
 
-								if (!isApprovedEditTool) {
+								if (!isApproved) {
 									const file = item.input?.file_path || item.input?.path || "";
 									const cmd = item.input?.command || "";
 									const toolLine =
@@ -362,11 +370,20 @@ export class Driver extends EventEmitter {
 						if (lastBashCmd) {
 							fwdText += `🔧 Tip: If the command failed, inspect output or run manually: ${lastBashCmd}\n`;
 						}
-						const consolidatedUI = uiText.trim();
+						const consolidatedUI = normalizeAssistantText(uiText);
 						const consolidatedFwd = fwdText.trim();
 						if (consolidatedUI || consolidatedFwd) {
 							const id = Driver.generateMessageId();
-							if (consolidatedUI) {
+							const matchesLastPrompt =
+								this.lastPromptNormalized &&
+								consolidatedUI === this.lastPromptNormalized;
+							if (matchesLastPrompt) {
+								this.lastPromptNormalized = undefined;
+							} else if (consolidatedUI) {
+								this.logger.logEvent("DRIVER_TEXT_NORMALIZED", {
+									length: consolidatedUI.length,
+									preview: consolidatedUI.slice(0, 200),
+								});
 								this.emit("message", {
 									role: "assistant",
 									content: consolidatedUI,
@@ -375,7 +392,9 @@ export class Driver extends EventEmitter {
 									id,
 								});
 							}
-							const toForward = consolidatedFwd || consolidatedUI;
+							const toForward = matchesLastPrompt
+								? ""
+								: consolidatedFwd || consolidatedUI;
 							if (toForward) {
 								// Add latest driver message for nav.
 								this.pendingTexts.push(`${toForward}\n`);
@@ -422,6 +441,20 @@ export class Driver extends EventEmitter {
 								const tid = (item as any).tool_use_id;
 								if (tid && this.pendingTools.has(tid)) {
 									this.pendingTools.delete(tid);
+
+									// Enhanced tool result logging
+									const toolName = this.getToolNameFromId(tid);
+									const resultContent = extractResultContent(item);
+									const isError =
+										(item as any).is_error || (item as any).isError || false;
+
+									this.logger.logToolResult(
+										"driver",
+										toolName || "unknown",
+										tid,
+										resultContent,
+										isError,
+									);
 									this.logger.logEvent("DRIVER_TOOL_RESULT_OBSERVED", {
 										id: tid,
 									});
@@ -524,7 +557,7 @@ export class Driver extends EventEmitter {
 		for (const [toolId, toolData] of this.toolResults) {
 			if (this.pendingTools.has(toolId)) continue; // Wait for tool_result
 
-			const cmd = this.convertMcpToolToDriverCommand(
+			const cmd = convertMcpToolToDriverCommand(
 				toolData.toolName,
 				toolData.input,
 			);
@@ -545,43 +578,12 @@ export class Driver extends EventEmitter {
 	}
 
 	/**
-	 * Convert MCP tool call to DriverCommand
-	 */
-	private convertMcpToolToDriverCommand(
-		toolName: string,
-		input: any,
-	): DriverCommand | null {
-		const normalized = Driver.normalizeDriverTool(toolName);
-		switch (normalized) {
-			case "mcp__driver__driverRequestReview":
-				return {
-					type: "request_review",
-					context: input.context,
-				};
-			case "mcp__driver__driverRequestGuidance":
-				return {
-					type: "request_guidance",
-					context: input.context,
-				};
-			default:
-				return null;
-		}
-	}
-
-	private static normalizeDriverTool(toolName: string): string {
-		if (toolName.startsWith("mcp__driver__")) {
-			return toolName;
-		}
-		if (toolName.startsWith("pair-driver_")) {
-			return `mcp__driver__${toolName.slice("pair-driver_".length)}`;
-		}
-		return toolName;
-	}
-
-	/**
 	 * Get and clear any pending driver commands (for orchestration layer)
 	 */
 	public getAndClearDriverCommands(): DriverCommand[] {
+		// Process any pending MCP tool results first to ensure commands are created
+		this.processDriverCommands();
+
 		const commands = this.driverCommands.slice();
 		this.driverCommands = [];
 		return commands;
@@ -599,5 +601,10 @@ export class Driver extends EventEmitter {
 	// Expose pending tool state to orchestrator
 	public hasPendingTools(): boolean {
 		return this.pendingTools.size > 0;
+	}
+
+	// Helper methods for enhanced logging
+	private getToolNameFromId(toolUseId: string): string | undefined {
+		return this.toolNameMapping.get(toolUseId);
 	}
 }

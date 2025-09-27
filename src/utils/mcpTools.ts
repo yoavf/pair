@@ -34,19 +34,14 @@ export const navigatorCodeReview = tool(
 	createNoOpHandler(),
 );
 
-export const navigatorComplete = tool(
-	"navigatorComplete",
-	"Navigator marks the task as complete",
-	{
-		summary: z.string().describe("Summary of what was accomplished"),
-	},
-	createNoOpHandler(),
-);
-
 export const navigatorApprove = tool(
 	"navigatorApprove",
 	"Navigator approves a driver's permission request",
 	{
+		requestId: z
+			.string()
+			.optional()
+			.describe("ID of the permission request being approved"),
 		comment: z.string().describe("Reason for approval"),
 	},
 	createNoOpHandler(),
@@ -56,6 +51,10 @@ export const navigatorDeny = tool(
 	"navigatorDeny",
 	"Navigator denies a driver's permission request",
 	{
+		requestId: z
+			.string()
+			.optional()
+			.describe("ID of the permission request being denied"),
 		comment: z.string().describe("Reason for denial"),
 	},
 	createNoOpHandler(),

@@ -217,8 +217,94 @@ describe("Permission Flow", () => {
 			);
 
 			expect(commands).toHaveLength(1);
-			expect(commands![0].type).toBe("complete");
-			expect(commands![0].summary).toBe("Task completed successfully - all features implemented and tested");
+			expect(commands![0].type).toBe("code_review");
+			expect(commands![0].pass).toBe(true);
+			expect(commands![0].comment).toBe("Task completed successfully - all features implemented and tested");
+		});
+	});
+
+	describe("Concurrent Permission Requests", () => {
+		it("should handle multiple concurrent permission requests correctly", () => {
+			// Add two active permission requests (simulating rapid successive edits)
+			(navigator as any).activePermissionRequests.add("request-1");
+			(navigator as any).activePermissionRequests.add("request-2");
+
+			// Verify both requests are tracked
+			expect((navigator as any).activePermissionRequests.size).toBe(2);
+			expect((navigator as any).activePermissionRequests.has("request-1")).toBe(true);
+			expect((navigator as any).activePermissionRequests.has("request-2")).toBe(true);
+
+			// Mock permission coordinator to handle decisions
+			(navigator as any).permissionCoordinator.handleNavigatorDecision = vi.fn().mockReturnValue(true);
+
+			// Approve request-1 while request-2 is still pending
+			const approval1Command = (navigator as any).convertMcpToolToCommand(
+				"mcp__navigator__navigatorApprove",
+				{ comment: "Approved file1", requestId: "request-1" }
+			);
+
+			// Should be null because it was handled
+			expect(approval1Command).toBeNull();
+
+			// Verify request-1 is removed but request-2 remains active
+			expect((navigator as any).activePermissionRequests.size).toBe(1);
+			expect((navigator as any).activePermissionRequests.has("request-1")).toBe(false);
+			expect((navigator as any).activePermissionRequests.has("request-2")).toBe(true);
+
+			// Now deny request-2
+			const denial2Command = (navigator as any).convertMcpToolToCommand(
+				"mcp__navigator__navigatorDeny",
+				{ comment: "Denied file2", requestId: "request-2" }
+			);
+
+			// Should be null because it was handled
+			expect(denial2Command).toBeNull();
+
+			// Verify both requests are now cleared
+			expect((navigator as any).activePermissionRequests.size).toBe(0);
+		});
+
+		it("should not block approval of second request when first is still pending", () => {
+			// Add two active permission requests
+			(navigator as any).activePermissionRequests.add("request-1");
+			(navigator as any).activePermissionRequests.add("request-2");
+
+			// Mock permission coordinator
+			(navigator as any).permissionCoordinator.handleNavigatorDecision = vi.fn().mockReturnValue(true);
+
+			// Try to approve request-2 while request-1 is still pending
+			const command = (navigator as any).convertMcpToolToCommand(
+				"mcp__navigator__navigatorApprove",
+				{ comment: "Approved", requestId: "request-2" }
+			);
+
+			// Should process the approval (return null after handling)
+			expect(command).toBeNull();
+
+			// Verify the decision was handled
+			expect((navigator as any).permissionCoordinator.handleNavigatorDecision).toHaveBeenCalledWith({
+				type: "approve",
+				comment: "Approved",
+				requestId: "request-2",
+			});
+
+			// Request-2 should be removed, request-1 should remain
+			expect((navigator as any).activePermissionRequests.has("request-1")).toBe(true);
+			expect((navigator as any).activePermissionRequests.has("request-2")).toBe(false);
+		});
+
+		it("should ignore approval with wrong request ID", () => {
+			// Add one active permission request
+			(navigator as any).activePermissionRequests.add("request-1");
+
+			// Try to approve with a different request ID
+			const command = (navigator as any).convertMcpToolToCommand(
+				"mcp__navigator__navigatorApprove",
+				{ comment: "Approved", requestId: "wrong-request-id" }
+			);
+
+			// Should be ignored (logged as NAVIGATOR_APPROVE_OUTSIDE_PERMISSION_IGNORED)
+			expect(command).toBeNull();
 		});
 	});
 
@@ -294,57 +380,67 @@ describe("Navigator Command Parsing", () => {
 	});
 
 	it("should parse approval commands correctly during permission flow", () => {
-		(navigator as any).inPermissionApproval = true;
+		// Add a permission request to simulate active permission flow
+		const requestId = "test-request-id";
+		(navigator as any).activePermissionRequests.add(requestId);
+		// Mock permission coordinator to not handle this decision
+		(navigator as any).permissionCoordinator.handleNavigatorDecision = vi.fn().mockReturnValue(false);
+
 		const command = (navigator as any).convertMcpToolToCommand(
 			"mcp__navigator__navigatorApprove",
-			{ comment: "LGTM" }
-		);
-
-		expect(command).toEqual({
-			type: "approve",
-			comment: "LGTM",
-		});
-	});
-
-	it("should map approval to code review outside permission flow", () => {
-		(navigator as any).inPermissionApproval = false;
-		const command = (navigator as any).convertMcpToolToCommand(
-			"mcp__navigator__navigatorApprove",
-			{ comment: "LGTM" }
+			{ comment: "LGTM", requestId }
 		);
 
 		expect(command).toEqual({
 			type: "code_review",
-			pass: true,
 			comment: "LGTM",
+			pass: true,
+			requestId,
 		});
+	});
+
+	it("should ignore approval outside permission flow", () => {
+		// Clear any active permission requests
+		(navigator as any).activePermissionRequests.clear();
+		const command = (navigator as any).convertMcpToolToCommand(
+			"mcp__navigator__navigatorApprove",
+			{ comment: "LGTM" }
+		);
+
+		// Approve tools outside permission flow should be ignored - only CodeReview should control session completion
+		expect(command).toBeNull();
 	});
 
 	it("should parse denial commands correctly during permission flow", () => {
-		(navigator as any).inPermissionApproval = true;
+		// Add a permission request to simulate active permission flow
+		const requestId = "test-request-id";
+		(navigator as any).activePermissionRequests.add(requestId);
+		// Mock permission coordinator to not handle this decision
+		(navigator as any).permissionCoordinator.handleNavigatorDecision = vi.fn().mockReturnValue(false);
+
 		const command = (navigator as any).convertMcpToolToCommand(
 			"mcp__navigator__navigatorDeny",
-			{ comment: "Needs more testing" }
-		);
-
-		expect(command).toEqual({
-			type: "deny",
-			comment: "Needs more testing",
-		});
-	});
-
-	it("should map denial to failed code review outside permission flow", () => {
-		(navigator as any).inPermissionApproval = false;
-		const command = (navigator as any).convertMcpToolToCommand(
-			"mcp__navigator__navigatorDeny",
-			{ comment: "Needs more testing" }
+			{ comment: "Needs more testing", requestId }
 		);
 
 		expect(command).toEqual({
 			type: "code_review",
-			pass: false,
 			comment: "Needs more testing",
+			pass: false,
+			requestId,
 		});
+	});
+
+	it("should ignore denial outside permission flow", () => {
+		// Clear any active permission requests
+		(navigator as any).activePermissionRequests.clear();
+		const command = (navigator as any).convertMcpToolToCommand(
+			"mcp__navigator__navigatorDeny",
+			{ comment: "Needs more testing" }
+		);
+
+		// Deny tools outside permission flow should be ignored - only CodeReview should control session continuation
+		expect(command).toBeNull();
 	});
 
 	it("should parse code review commands correctly", () => {
@@ -362,13 +458,14 @@ describe("Navigator Command Parsing", () => {
 
 	it("should parse completion commands correctly", () => {
 		const command = (navigator as any).convertMcpToolToCommand(
-			"mcp__navigator__navigatorComplete",
-			{ summary: "All done!" }
+			"mcp__navigator__navigatorCodeReview",
+			{ comment: "All done!", pass: true }
 		);
 
 		expect(command).toEqual({
-			type: "complete",
-			summary: "All done!",
+			type: "code_review",
+			comment: "All done!",
+			pass: true,
 		});
 	});
 
@@ -388,8 +485,9 @@ describe("Navigator Command Parsing", () => {
 describe("Session Management", () => {
 	it("should identify session-ending commands", () => {
 		const completeCommand: NavigatorCommand = {
-			type: "complete",
-			summary: "Task finished",
+			type: "code_review",
+			comment: "Task finished",
+			pass: true,
 		};
 
 		const passReviewCommand: NavigatorCommand = {

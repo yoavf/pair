@@ -4,6 +4,7 @@
 
 import type { createOpencodeClient } from "@opencode-ai/sdk";
 import { z } from "zod";
+import type { PermissionGuardOptions } from "../../../types/permission.js";
 import type { DiagnosticLogger } from "../../types.js";
 
 export const McpServerSchema = z.union([
@@ -59,6 +60,7 @@ export type ToolPermissionResult =
 export type ToolGuard = (
 	toolName: string,
 	input: Record<string, unknown>,
+	options?: PermissionGuardOptions,
 ) => Promise<ToolPermissionResult>;
 
 export interface ModelConfig {

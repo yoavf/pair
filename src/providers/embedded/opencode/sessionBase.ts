@@ -67,6 +67,11 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 	// Track active permission requests to ensure one approval per request
 	private currentPermissionRequestId: string | null = null;
 
+	// Track emitted tool callIDs and buffer permissions to ensure correct ordering
+	private readonly emittedToolCallIds = new Set<string>();
+	private readonly bufferedPermissions = new Map<string, Permission>();
+	private readonly permissionTimeouts = new Map<string, NodeJS.Timeout>();
+
 	// Debouncing for high-frequency events
 	private eventDebounceTimer?: NodeJS.Timeout;
 	private eventDebounceBuffer = new Map<string, number>();
@@ -77,6 +82,9 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 	>();
 	private readonly EVENT_DEBOUNCE_MS = 1000;
 	private readonly TEXT_PART_DEBOUNCE_MS = 500;
+	private readonly BUFFER_EMISSION_DEBOUNCE_MS = 300;
+	private bufferEmissionTimers = new Map<string, NodeJS.Timeout>();
+	private lastEmittedBufferContent = new Map<string, string>();
 
 	private readonly promptQueue: string[] = [];
 	private processing = false;
@@ -175,6 +183,30 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 		} finally {
 			this.toolIdsLogged = true;
 		}
+	}
+
+	private summarizeMetadata(
+		metadata?: Record<string, unknown> | null,
+	): Record<string, unknown> | undefined {
+		if (!metadata) return undefined;
+		const summary: Record<string, unknown> = {};
+		for (const [key, value] of Object.entries(metadata)) {
+			if (typeof value === "string") {
+				const normalized = value.replace(/\s+/g, " ").trim();
+				const max = 120;
+				if (normalized.length > max) {
+					summary[key] =
+						`${normalized.slice(0, 80)}…${normalized.slice(-20)} (len ${normalized.length})`;
+				} else {
+					summary[key] = normalized;
+				}
+			} else if (Array.isArray(value)) {
+				summary[key] = `Array(${value.length})`;
+			} else {
+				summary[key] = value as unknown;
+			}
+		}
+		return summary;
 	}
 
 	protected async initialize(): Promise<void> {
@@ -326,6 +358,13 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 			}
 			this.messageBuffers.delete(info.id);
 			this.messagePartIds.delete(info.id);
+			// Clean up debounce state
+			const timer = this.bufferEmissionTimers.get(info.id);
+			if (timer) {
+				clearTimeout(timer);
+				this.bufferEmissionTimers.delete(info.id);
+			}
+			this.lastEmittedBufferContent.delete(info.id);
 		}
 	}
 
@@ -394,18 +433,9 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 		if (!delta) return;
 
 		if (this.includePartialMessages) {
-			this.queue.push({
-				type: "assistant",
-				session_id: this.sessionId ?? undefined,
-				message: {
-					content: [
-						{
-							type: "text",
-							text: delta,
-						},
-					],
-				},
-			});
+			// Send accumulated buffer periodically to avoid fragmentation
+			// This mimics Claude Code's batching behavior
+			this.debounceBufferEmission(part.messageID);
 		}
 	}
 
@@ -453,10 +483,7 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 						this.isNavigatorDecisionTool(mappedName)
 					) {
 						// Block invalid tools during permission requests
-						if (
-							mappedName.includes("navigatorComplete") ||
-							mappedName.includes("navigatorCodeReview")
-						) {
+						if (mappedName.includes("navigatorCodeReview")) {
 							this.logDiagnostic("OPENCODE_NAVIGATOR_INVALID_TOOL_BLOCKED", {
 								tool: mappedName,
 								permissionId: this.currentPermissionRequestId,
@@ -493,6 +520,7 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 					}
 				}
 
+				// Emit the tool_use message
 				this.queue.push({
 					type: "assistant",
 					session_id: this.sessionId ?? undefined,
@@ -507,6 +535,33 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 						],
 					},
 				});
+
+				// Mark this tool as emitted
+				this.emittedToolCallIds.add(part.callID);
+
+				// Check if there's a buffered permission for this tool
+				const bufferedPermission = this.bufferedPermissions.get(part.callID);
+				if (bufferedPermission) {
+					this.logDiagnostic("OPENCODE_PROCESSING_BUFFERED_PERMISSION", {
+						callId: part.callID,
+						toolName: mappedName,
+					});
+
+					// Clear the timeout since we're processing it now
+					const timeout = this.permissionTimeouts.get(part.callID);
+					if (timeout) {
+						clearTimeout(timeout);
+						this.permissionTimeouts.delete(part.callID);
+					}
+
+					// Remove from buffer and process
+					this.bufferedPermissions.delete(part.callID);
+					// Process the permission after a microtask to ensure tool_use is fully emitted
+					setImmediate(() => {
+						void this.processPermission(bufferedPermission);
+					});
+				}
+
 				break;
 			}
 			case "completed": {
@@ -560,6 +615,42 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 		const info = event.properties;
 		if (info.sessionID !== this.sessionId) return;
 
+		// Check if we're the driver role and if the tool has already been emitted
+		if (this.role === "driver" && info.callID) {
+			if (!this.emittedToolCallIds.has(info.callID)) {
+				// Tool hasn't been emitted yet, buffer this permission
+				this.logDiagnostic("OPENCODE_BUFFERING_PERMISSION", {
+					permissionId: info.id,
+					callId: info.callID,
+					toolType: info.type,
+				});
+
+				this.bufferedPermissions.set(info.callID, info);
+
+				// Set a timeout to process this permission even if the tool never arrives
+				const timeout = setTimeout(() => {
+					this.logDiagnostic("OPENCODE_PERMISSION_TIMEOUT", {
+						callId: info.callID,
+						permissionId: info.id,
+					});
+					const buffered = this.bufferedPermissions.get(info.callID!);
+					if (buffered) {
+						this.bufferedPermissions.delete(info.callID!);
+						this.permissionTimeouts.delete(info.callID!);
+						void this.processPermission(buffered);
+					}
+				}, 500);
+
+				this.permissionTimeouts.set(info.callID, timeout);
+				return;
+			}
+		}
+
+		// Process the permission immediately
+		await this.processPermission(info);
+	}
+
+	private async processPermission(info: Permission): Promise<void> {
 		if (this.role === "navigator") {
 			this.currentPermissionRequestId = info.id;
 		}
@@ -578,6 +669,14 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 			return;
 		}
 
+		this.logDiagnostic("OPENCODE_PERMISSION_DETAILS", {
+			toolName,
+			callId: info.callID,
+			metadata: this.summarizeMetadata(
+				info.metadata as Record<string, unknown> | undefined,
+			),
+		});
+
 		if (!this.guard) {
 			await this.respondToPermission(info, "once");
 			return;
@@ -585,17 +684,38 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 
 		let decision: ToolPermissionResult;
 		try {
-			decision = await this.guard(toolName, info.metadata ?? {});
+			decision = await this.guard(toolName, info.metadata ?? {}, {
+				toolId: info.callID ?? undefined,
+				metadata: info.metadata ?? undefined,
+			});
 		} catch (error) {
 			await this.respondToPermission(info, "reject");
+
+			// Emit tool error result so driver knows the tool failed
+			const errorMessage = `Permission handling failed for ${toolName}: ${
+				error instanceof Error ? error.message : String(error)
+			}`;
+			this.queue.push({
+				type: "user",
+				session_id: this.sessionId ?? undefined,
+				message: {
+					content: [
+						{
+							type: "tool_result",
+							tool_use_id: info.callID,
+							text: errorMessage,
+							is_error: true,
+						},
+					],
+				},
+			});
+
 			this.queue.push({
 				type: "system",
 				session_id: this.sessionId ?? undefined,
 				subtype: "permission_error",
 				message: {
-					content: `Permission handling failed for ${toolName}: ${
-						error instanceof Error ? error.message : String(error)
-					}`,
+					content: errorMessage,
 				},
 			});
 			return;
@@ -611,6 +731,23 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 		}
 
 		await this.respondToPermission(info, "reject");
+
+		// Emit tool error result so driver knows the tool failed
+		this.queue.push({
+			type: "user",
+			session_id: this.sessionId ?? undefined,
+			message: {
+				content: [
+					{
+						type: "tool_result",
+						tool_use_id: info.callID,
+						text: decision.message,
+						is_error: true,
+					},
+				],
+			},
+		});
+
 		// Clear permission request ID after responding
 		if (this.role === "navigator") {
 			this.currentPermissionRequestId = null;
@@ -715,6 +852,13 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 			this.queue.finish();
 			this.logDiagnostic("OPENCODE_SESSION_ENDED", {});
 
+			// Clear permission timeouts
+			for (const timeout of this.permissionTimeouts.values()) {
+				clearTimeout(timeout);
+			}
+			this.permissionTimeouts.clear();
+			this.bufferedPermissions.clear();
+
 			// Flush any remaining debounced logs
 			if (this.eventDebounceTimer) {
 				clearTimeout(this.eventDebounceTimer);
@@ -736,7 +880,14 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 	async interrupt(): Promise<void> {
 		await this.initialized;
 		if (!this.sessionId) return;
-		this.logDiagnostic("OPENCODE_SESSION_INTERRUPT", {});
+
+		// Clear any pending prompts to prevent them from being sent after interrupt
+		this.promptQueue.length = 0;
+		this.processing = false;
+
+		this.logDiagnostic("OPENCODE_SESSION_INTERRUPT", {
+			promptsCleared: true,
+		});
 		await this.client.session.abort({
 			path: { id: this.sessionId },
 			query: this.directory ? { directory: this.directory } : undefined,
@@ -824,5 +975,43 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 			this.textPartDebounceBuffer.clear();
 		}
 		this.textPartDebounceTimer = undefined;
+	}
+
+	private debounceBufferEmission(messageId: string): void {
+		// Clear existing timer for this message
+		const existingTimer = this.bufferEmissionTimers.get(messageId);
+		if (existingTimer) {
+			clearTimeout(existingTimer);
+		}
+
+		// Set new timer to emit accumulated buffer
+		const timer = setTimeout(() => {
+			this.emitAccumulatedBuffer(messageId);
+			this.bufferEmissionTimers.delete(messageId);
+		}, this.BUFFER_EMISSION_DEBOUNCE_MS);
+
+		this.bufferEmissionTimers.set(messageId, timer);
+	}
+
+	private emitAccumulatedBuffer(messageId: string): void {
+		const currentBuffer = this.messageBuffers.get(messageId) ?? "";
+		const lastEmitted = this.lastEmittedBufferContent.get(messageId) ?? "";
+
+		// Only emit if we have new content to avoid duplicates
+		if (currentBuffer.length > lastEmitted.length && currentBuffer.trim()) {
+			this.queue.push({
+				type: "assistant",
+				session_id: this.sessionId ?? undefined,
+				message: {
+					content: [
+						{
+							type: "text",
+							text: currentBuffer,
+						},
+					],
+				},
+			});
+			this.lastEmittedBufferContent.set(messageId, currentBuffer);
+		}
 	}
 }
