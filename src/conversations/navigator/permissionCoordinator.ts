@@ -3,6 +3,7 @@
  * Replaces complex batch resolvers with direct promise mapping
  */
 
+import { randomUUID } from "node:crypto";
 import {
 	PermissionMalformedError,
 	PermissionTimeoutError,
@@ -39,7 +40,7 @@ export class PermissionCoordinator {
 		const { signal } = options;
 		signal?.throwIfAborted();
 
-		const requestId = request.requestId || crypto.randomUUID();
+		const requestId = request.requestId || randomUUID();
 		const requestWithId = { ...request, requestId };
 
 		return new Promise<PermissionResult>((resolve, reject) => {

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import path from "node:path";
 import type {
@@ -302,7 +303,7 @@ export class Navigator extends EventEmitter {
 		options: PermissionOptions = {},
 	): Promise<PermissionResult> {
 		// Ensure request has an ID
-		const requestId = request.requestId || crypto.randomUUID();
+		const requestId = request.requestId || randomUUID();
 		const requestWithId = { ...request, requestId };
 
 		// Store tool ID for review tracking
