@@ -32,11 +32,21 @@ export class PermissionHandler {
 		const { controller, cleanup } = createTimeout(timeoutMs);
 
 		try {
-			this.logger.logAgentCommunication("driver", "navigator", "permission_request", request);
+			this.logger.logAgentCommunication(
+				"driver",
+				"navigator",
+				"permission_request",
+				request,
+			);
 			const result = await this.navigator.reviewPermission(request, {
 				signal: controller.signal,
 			});
-			this.logger.logAgentCommunication("navigator", "driver", "permission_result", result);
+			this.logger.logAgentCommunication(
+				"navigator",
+				"driver",
+				"permission_result",
+				result,
+			);
 			cleanup();
 			return result;
 		} catch (error) {

@@ -57,7 +57,7 @@ export class LogAnalyzer {
 		}
 
 		const content = fs.readFileSync(this.logFile, "utf-8");
-		const lines = content.split("\n").filter(line => line.trim() !== "");
+		const lines = content.split("\n").filter((line) => line.trim() !== "");
 		const entries: LogEntry[] = [];
 
 		for (const line of lines) {
@@ -123,7 +123,7 @@ export class LogAnalyzer {
 						entry.event = `AGENT_COMM_${jsonEntry.from}_TO_${jsonEntry.to}`;
 						entry.data = {
 							messageType: jsonEntry.messageType,
-							data: jsonEntry.data
+							payload: jsonEntry.data,
 						};
 						break;
 
@@ -134,18 +134,15 @@ export class LogAnalyzer {
 					default:
 						// For any other types, try to map generically
 						if (jsonEntry.event) entry.event = jsonEntry.event;
-						if (jsonEntry.description) entry.description = jsonEntry.description;
+						if (jsonEntry.description)
+							entry.description = jsonEntry.description;
 						if (jsonEntry.data) entry.data = jsonEntry.data;
 						if (jsonEntry.sessionId) entry.sessionId = jsonEntry.sessionId;
 						if (jsonEntry.context) entry.context = jsonEntry.context;
 				}
 
 				entries.push(entry);
-			} catch (e) {
-				// If JSON parsing fails, skip the line
-				// This allows backward compatibility with any old format lines
-				continue;
-			}
+			} catch (e) {}
 		}
 
 		return entries;

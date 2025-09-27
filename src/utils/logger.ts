@@ -24,9 +24,14 @@ export class Logger {
 		// If verbose is enabled via CLI, set log level to verbose
 		if (verbose) {
 			this.logLevel = "verbose";
-			this.verbose = true;
-		} else if (["error", "warn", "info", "debug"].includes(envLevel || "")) {
+		} else if (
+			["error", "warn", "info", "debug", "verbose"].includes(envLevel || "")
+		) {
 			this.logLevel = envLevel as LogLevel;
+			// If environment sets verbose level, enable verbose mode
+			if (envLevel === "verbose") {
+				this.verbose = true;
+			}
 		} else {
 			this.logLevel = null;
 		}
@@ -158,7 +163,9 @@ export class Logger {
 			toolName,
 			toolUseId,
 			isError: isError || false,
-			result: this.verbose ? result : this.sanitizeToolResult(toolName, result, isError),
+			result: this.verbose
+				? result
+				: this.sanitizeToolResult(toolName, result, isError),
 		});
 	}
 
@@ -400,7 +407,12 @@ export class Logger {
 
 	// Log agent communication in verbose mode
 	// biome-ignore lint/suspicious/noExplicitAny: Generic logging interface for flexibility
-	logAgentCommunication(from: string, to: string, messageType: string, data: any) {
+	logAgentCommunication(
+		from: string,
+		to: string,
+		messageType: string,
+		data: any,
+	) {
 		if (!this.shouldLog("verbose") || !this.logStream) return;
 
 		this.writeJsonl({

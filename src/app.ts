@@ -78,7 +78,9 @@ export class PairApp {
 		this.logger = new Logger("pair-debug.log", appConfig.verboseLogging);
 		const logPath = this.logger.getFilePath();
 		this.logger.logEvent("APP_LOGGING_CONFIG", {
-			level: appConfig.verboseLogging ? "verbose" : (process.env.LOG_LEVEL || "(disabled)"),
+			level: appConfig.verboseLogging
+				? "verbose"
+				: process.env.LOG_LEVEL || "(disabled)",
 			file: logPath || "(none)",
 			verbose: appConfig.verboseLogging,
 		});

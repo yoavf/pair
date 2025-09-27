@@ -147,6 +147,7 @@ When `opencode` is on your PATH, the provider will automatically launch a local 
   - `warn`: Log warnings and errors
   - `info`: Log general information, tools usage
   - `debug`: Enable detailed session logging
+  - `verbose`: Enable verbose logging of all agent communication data
 - `-v, --verbose`: Command-line flag to enable verbose logging of all agent communication data
 
 When enabled, logs are written to `~/.pair/logs/pair-debug.log` in JSONL format (one JSON object per line)
