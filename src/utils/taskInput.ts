@@ -5,7 +5,7 @@
 import readline from "node:readline";
 
 /**
- * Get task from user input
+ * Get task from user input (supports multi-line)
  */
 export async function getTaskFromUser(): Promise<string> {
 	const rl = readline.createInterface({
@@ -13,10 +13,22 @@ export async function getTaskFromUser(): Promise<string> {
 		output: process.stdout,
 	});
 
+	console.log("Enter the task for Claude to pair code on.");
+	console.log(
+		"Type your prompt (can be multiple lines). Press Ctrl+D (Linux/Mac) or Ctrl+Z (Windows) when finished:",
+	);
+	console.log("");
+
 	return new Promise((resolve) => {
-		rl.question("Enter the task for Claude to pair code on:\n> ", (answer) => {
-			rl.close();
-			resolve(answer.trim());
+		const lines: string[] = [];
+
+		rl.on("line", (input) => {
+			lines.push(input);
+		});
+
+		rl.on("close", () => {
+			const result = lines.join("\n").trim();
+			resolve(result);
 		});
 	});
 }
