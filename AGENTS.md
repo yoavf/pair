@@ -65,8 +65,7 @@ Pair is a CLI utility to run coding agents in pair programming mode.
 - Path specification: `pair --dir /your/project -p "your prompt"`
 - File input: `pair -f prompt.txt`
 - Provider/model configuration:
-  - `--architect <provider>` and `--architect-model <model>`
   - `--navigator <provider>` and `--navigator-model <model>`
   - `--driver <provider>` and `--driver-model <model>`
 - Available providers: `claude-code` (default), `opencode`
-- OpenCode requires explicit model: `--architect opencode --architect-model openrouter/google/gemini-2.5-flash`
+- OpenCode requires explicit model: `--navigator opencode --navigator-model openrouter/google/gemini-2.5-flash`

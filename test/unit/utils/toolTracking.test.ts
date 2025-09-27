@@ -52,7 +52,7 @@ describe("ToolTracker", () => {
 
     it("should not track non-driver tools for review", () => {
       tracker.registerTool("Write", {}, "navigator");
-      tracker.registerTool("Edit", {}, "architect");
+      tracker.registerTool("Edit", {}, "navigator");
 
       const pending = tracker.getPendingTools();
       expect(pending).toHaveLength(0);

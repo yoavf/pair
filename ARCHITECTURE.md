@@ -205,6 +205,6 @@ PAIR_DRIVER_MAX_TURNS=20           # Driver conversation limit
 - `src/mcp/httpServer.ts` - HTTP server with SSE endpoints for MCP communication
 - `src/utils/mcpServers.ts` - MCP server configurations and tool name exports
 - `src/utils/mcpTools.ts` - Individual MCP tool definitions with Zod schemas
-- `src/conversations/` - Agent implementations (Navigator, Driver, Architect)
+- `src/conversations/` - Agent implementations (Navigator, Driver)
 - `src/index.ts` - Main orchestrator with flow handling logic
 - `src/utils/timeouts.ts` - Shared timeout utilities and configuration
