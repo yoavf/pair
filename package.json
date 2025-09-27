@@ -1,6 +1,6 @@
 {
 	"name": "@yoavf/pair",
-	"version": "0.1.1",
+	"version": "0.2.0",
 	"description": "Pair is a CLI utility that orchestrates coding agents in pair programming mode",
 	"type": "module",
 	"main": "dist/index.js",
