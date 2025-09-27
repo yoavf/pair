@@ -690,14 +690,32 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 			});
 		} catch (error) {
 			await this.respondToPermission(info, "reject");
+
+			// Emit tool error result so driver knows the tool failed
+			const errorMessage = `Permission handling failed for ${toolName}: ${
+				error instanceof Error ? error.message : String(error)
+			}`;
+			this.queue.push({
+				type: "user",
+				session_id: this.sessionId ?? undefined,
+				message: {
+					content: [
+						{
+							type: "tool_result",
+							tool_use_id: info.callID,
+							text: errorMessage,
+							is_error: true,
+						},
+					],
+				},
+			});
+
 			this.queue.push({
 				type: "system",
 				session_id: this.sessionId ?? undefined,
 				subtype: "permission_error",
 				message: {
-					content: `Permission handling failed for ${toolName}: ${
-						error instanceof Error ? error.message : String(error)
-					}`,
+					content: errorMessage,
 				},
 			});
 			return;
@@ -713,6 +731,23 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 		}
 
 		await this.respondToPermission(info, "reject");
+
+		// Emit tool error result so driver knows the tool failed
+		this.queue.push({
+			type: "user",
+			session_id: this.sessionId ?? undefined,
+			message: {
+				content: [
+					{
+						type: "tool_result",
+						tool_use_id: info.callID,
+						text: decision.message,
+						is_error: true,
+					},
+				],
+			},
+		});
+
 		// Clear permission request ID after responding
 		if (this.role === "navigator") {
 			this.currentPermissionRequestId = null;
