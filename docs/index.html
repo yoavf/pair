@@ -3,49 +3,51 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Pair(claude) — Collaborative AI Pair Programming Experiment</title>
-  <meta name="description" content="Pair(claude) is an experimental CLI that runs two Claude Code agents side-by-side — a Navigator and a Driver — to explore the benefits of parallel pair programming." />
+  <title>Pair — Collaborative AI Pair Programming Experiment</title>
+  <meta name="description" content="Pair is an experimental CLI that runs two coding agents side-by-side — a Navigator and a Driver — to explore the benefits of parallel pair programming." />
   <meta name="color-scheme" content="dark light" />
   <meta name="theme-color" content="#f7f8fb" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Kode+Mono:wght@400..700&display=swap" rel="stylesheet">
   <link rel="preconnect" href="https://asciinema.org" />
-  <link rel="icon" type="image/svg+xml" href="assets/favicon.ico" />
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.png" />
 
   <!-- Open Graph / Twitter -->
-  <meta property="og:title" content="Pair(claude) — Dual Claude Code Pair Programming" />
-  <meta property="og:description" content="Experimental A pair programming session with two Claude Code agents: Navigator + Driver running in parallel for collaborative development." />
+  <meta property="og:title" content="Pair — Dual Coding Agents Pair Programming" />
+  <meta property="og:description" content="Experimental A pair programming session with two coding agents: Navigator + Driver running in parallel for collaborative development." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="" />
-  <meta property="og:image" content="https://yoavf.github.io/pair-claude/assets/preview.png" />
+  <meta property="og:image" content="https://yoavf.github.io/pair/assets/preview.png" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Pair(claude) — Dual Claude Code Pair Programming" />
-  <meta name="twitter:description" content="Experimental pair programming session with two Claude Code agents: Navigator + Driver running in parallel for collaborative development." />
-  <meta name="twitter:image" content="https://yoavf.github.io/pair-claude/assets/preview.png" />
+  <meta name="twitter:title" content="Pair — Dual Coding Agents Pair Programming" />
+  <meta name="twitter:description" content="Experimental pair programming session with two coding agents: Navigator + Driver running in parallel for collaborative development." />
+  <meta name="twitter:image" content="https://yoavf.github.io/pair/assets/preview.png" />
 
   <link rel="stylesheet" href="styles.css?v=2" />
   <script src="https://cdn.counter.dev/script.js" data-id="4fbcc31f-5f37-40c3-8788-8fb56c79209b" data-utcoffset="3"></script>
 </head>
 <body>
   <!-- Top GitHub Link -->
-  <a class="top-github" id="topGithub" href="https://github.com/yoavf/pair-claude" target="_blank" rel="noopener">GitHub ↗</a>
+  <a class="top-github" id="topGithub" href="https://github.com/yoavf/pair" target="_blank" rel="noopener">GitHub ↗</a>
 
   <!-- Banner Image -->
   <div class="ascii-banner" id="banner">
-    <img src="assets/pair-claude.png" alt="pair claude" id="bannerImage" />
+    <img src="assets/pair.png" alt="pair" id="bannerImage" />
   </div>
 
   <!-- Hero Text -->
   <div class="hero-text">
-    <p class="tagline">What happens when you put two coding agents side by side?</p>
+    <p class="tagline">What happens when you let multiple coding agents work on the same task together?</p>
     <p class="description">
-      <b>Pair(</b>claude<b>)</b> runs two Claude Code sessions in parallel, collaborating on the same task.
+      <b>Pair</b> runs two coding agent sessions (using <a href="https://claude.com/product/claude-code" target="_blank">Claude Code</a> or <a href="https://opencode.ai">opencode</a>) in parallel, collaborating on the same task.
+    </p>
+    <p class="description">
       One acts as <b>Navigator</b>, planning and reviewing, while the other takes the role of <b>Driver</b>, writing the code.
     </p>
     <div class="cta-row">
       <a class="btn" href="#" id="actionBtn">See it in action</a>
-      <a class="btn secondary" href="https://github.com/yoavf/pair-claude" target="_blank" rel="noopener">GitHub</a>
+      <a class="btn secondary" href="https://github.com/yoavf/pair" target="_blank" rel="noopener">GitHub</a>
     </div>
   </div>
 
@@ -97,43 +99,39 @@
       <h2 style="color: #ffffff; text-align: center; margin-bottom: 40px; font-size: 24px;">FAQ</h2>
 
       <div style="margin-bottom: 30px;">
-        <h3 style="color: #4be29a; margin-bottom: 10px;">What is Pair(claude)?</h3>
-        <p>Pair(claude) is an experiment in running two Claude Code sessions in <a href="https://en.wikipedia.org/wiki/Pair_programming" target="_blank">pair programming</a> mode.</p>
+        <h3 style="color: #4be29a; margin-bottom: 10px;">What is Pair?</h3>
+        <p>Pair is an experiment in running two coding agents sessions in <a href="https://en.wikipedia.org/wiki/Pair_programming" target="_blank">pair programming</a> mode. It currently supports Claude Code and opencode.</p>
       </div>
 
       <div style="margin-bottom: 30px;">
         <h3 style="color: #4be29a; margin-bottom: 10px;">How does it work?</h3>
-        <p>Using the Claude Code sdk and two sessions, messages are relayed between a <i>Driver</i> who makes the change and a <i>Navigator</i> who reviews and provides guidance and feedback. The navigator approves all file edits, and when asked by the Driver, performs a full code review.</p>
+        <p>It starts with the Navigator planning the task, then moves to a pair coding session where messages are relayed between a <i>Driver</i> who makes the changes and the <i>Navigator</i> who reviews and provides guidance. The navigator approves all file edits, and when asked by the Driver, performs a full code review.</p>
       </div>
 
       <div style="margin-bottom: 30px;">
         <h3 style="color: #4be29a; margin-bottom: 10px;">How can I try this?</h3>
         <p>
-          Run <code>npx @yoavf/pair claude</code> to start a Pair(claude) session.
-        </p>
-        <p>
-          If you want the <code>pair</code> command available permanently on your system, install it globally with <code>npm install -g @yoavf/pair</code>.
-          After that, you can run <code>pair claude</code> anytime.
+          If you're already using Claude Code, simply run <code>npx @yoavf/pair</code> to start a Pair session. See the full docs for information on how to select the provider (Claude Code or opencode) and the model for each role.
         </p>
       </div>
 
       <div style="margin-bottom: 30px;">
         <h3 style="color: #4be29a; margin-bottom: 10px;">I have an idea! / It doesn't work</h3>
         <p>
-          That's not a question :) - But hey, I'd love to know more. Head over to <a href="https://github.com/yoavf/pair-claude" target="_blank">GitHub</a> to participate!
+          That's not a question :) - But hey, I'd love to know more. Head over to <a href="https://github.com/yoavf/pair" target="_blank">GitHub</a> to participate!
         </p>
       </div>
     </div>
 
     <!-- Footer -->
     <div class="footer" style="margin-top: 60px;">
-      <p>Pair(claude) — an experiment by <a href="https://yoav.blog" target="_blank" rel="noopener">Yoav Farhi</a> • <a href="https://github.com/yoavf" target="_blank" rel="noopener">@yoavf</a></p>
+      <p>Pair — an experiment by <a href="https://yoav.blog" target="_blank" rel="noopener">Yoav Farhi</a> • <a href="https://github.com/yoavf" target="_blank" rel="noopener">@yoavf</a></p>
     </div>
   </div>
 
   <script>
     // Configure your GitHub repo URL here (will populate both links)
-    window.GITHUB_URL = 'https://github.com/yoavf/pair-claude';
+    window.GITHUB_URL = 'https://github.com/yoavf/pair';
 
     // List your Asciinema sessions here. Each entry needs an id (the asciicast ID) and a title.
     window.ASCIICASTS = [

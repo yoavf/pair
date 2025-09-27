@@ -1,7 +1,7 @@
 
 function updateParallax() {
   const scrollY = window.pageYOffset;
-  const progress = Math.min(1, scrollY / 500);
+  const progress = Math.min(1, scrollY / 900);
 
   console.log('Scroll:', scrollY, 'Progress:', progress);
 
@@ -11,7 +11,7 @@ function updateParallax() {
   const scrollArrow = document.querySelector('.scroll-arrow');
 
   if (topGithub) {
-    if (progress > 0.4) {
+    if (progress > 0.7) {
       topGithub.classList.add('visible');
     } else {
       topGithub.classList.remove('visible');
