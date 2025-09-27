@@ -53,8 +53,10 @@ export class EventHandlersManager {
 			if (t) this.addToDriverBuffer(t);
 		});
 
-		this.driver.on("tool_use", ({ tool, input }) => {
-			this.display.showToolUse("driver", tool, input);
+		this.driver.on("tool_use", ({ tool, input, trackingId }) => {
+			// Preserve trackingId in params for display to use for review coordination
+			const inputWithTracking = trackingId ? { ...input, trackingId } : input;
+			this.display.showToolUse("driver", tool, inputWithTracking);
 			this.logger.logToolUse("driver", tool, input);
 			// Summarize tool usage line for buffered transcript
 			try {
