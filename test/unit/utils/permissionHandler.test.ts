@@ -24,6 +24,7 @@ describe("PermissionHandler", () => {
 		} as unknown as InkDisplayManager;
 		const loggerMock = {
 			logEvent: vi.fn(),
+			logAgentCommunication: vi.fn(),
 		} as unknown as Logger;
 		const handler = new PermissionHandler(
 			navigatorMock,

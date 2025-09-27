@@ -24,6 +24,12 @@ export class EventHandlersManager {
 		// Planning navigator events
 		this.planningNavigator.on("message", (message) => {
 			this.display.showPlanningTurn(message.content);
+			this.logger.logAgentCommunication(
+				"navigator-planning",
+				"display",
+				"message",
+				message,
+			);
 		});
 
 		this.planningNavigator.on("tool_use", ({ tool, input }) => {
@@ -37,6 +43,12 @@ export class EventHandlersManager {
 				return;
 			}
 			this.display.showNavigatorTurn(message.content);
+			this.logger.logAgentCommunication(
+				"navigator-monitoring",
+				"display",
+				"message",
+				message,
+			);
 		});
 
 		this.monitoringNavigator.on("tool_use", ({ tool, input }) => {
@@ -47,6 +59,12 @@ export class EventHandlersManager {
 		// Driver events
 		this.driver.on("message", (message) => {
 			this.display.showDriverTurn(message.content);
+			this.logger.logAgentCommunication(
+				"driver",
+				"display",
+				"message",
+				message,
+			);
 			// Buffer for permission bulk-forwarding
 			const t = (message.content || "").trim();
 			if (t) this.addToDriverBuffer(t);
