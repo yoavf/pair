@@ -74,7 +74,7 @@ export function loadConfig(): AppConfig {
 			60 *
 			1000,
 		enableSyncStatus: process.env.CLAUDE_PAIR_DISABLE_SYNC_STATUS !== "true",
-		verboseLogging: process.env.CLAUDE_PAIR_VERBOSE === "true",
+		verboseLogging: false, // Set via CLI flag only
 		navigatorConfig: { ...DEFAULT_CONFIG.navigatorConfig },
 		driverConfig: { ...DEFAULT_CONFIG.driverConfig },
 	};

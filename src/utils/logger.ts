@@ -21,8 +21,8 @@ export class Logger {
 		this.verbose = verbose;
 		// Parse LOG_LEVEL environment variable
 		const envLevel = process.env.LOG_LEVEL?.toLowerCase();
-		// If verbose is enabled via CLI or env, set log level to verbose
-		if (verbose || envLevel === "verbose") {
+		// If verbose is enabled via CLI, set log level to verbose
+		if (verbose) {
 			this.logLevel = "verbose";
 			this.verbose = true;
 		} else if (["error", "warn", "info", "debug"].includes(envLevel || "")) {

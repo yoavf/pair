@@ -49,6 +49,7 @@ export class LogAnalyzer {
 
 	/**
 	 * Parse the debug log file into structured entries
+	 * Supports JSONL format (one JSON object per line)
 	 */
 	parseLog(): LogEntry[] {
 		if (!fs.existsSync(this.logFile)) {
@@ -56,145 +57,95 @@ export class LogAnalyzer {
 		}
 
 		const content = fs.readFileSync(this.logFile, "utf-8");
-		const lines = content.split("\n");
+		const lines = content.split("\n").filter(line => line.trim() !== "");
 		const entries: LogEntry[] = [];
-		let currentEntry: Partial<LogEntry> | null = null;
-		let isCapturingData = false;
-		let dataBuffer: string[] = [];
 
 		for (const line of lines) {
-			// Skip header lines and empty lines
-			if (line.startsWith("===") || line.trim() === "") continue;
+			try {
+				// Try to parse as JSONL (one JSON object per line)
+				const jsonEntry = JSON.parse(line);
 
-			// Check if this is a new log entry
-			const eventMatch = line.match(/^EVENT \[([^\]]+)\] (.+)$/);
-			const eventBundleMatch = line.match(/^EVENT_BUNDLE \[([^\]]+)\] (.+)$/);
-			const toolUseMatch = line.match(/^TOOL_USE \[([^\]]+)\] (.+)$/);
-			const toolResultMatch = line.match(/^TOOL_RESULT \[([^\]]+)\] (.+)$/);
-			const navigatorMatch = line.match(/^NAVIGATOR \[([^\]]+)\] (.+)$/);
-			const driverMatch = line.match(/^DRIVER \[([^\]]+)\] (.+)$/);
-			const stateMatch = line.match(/^STATE \[([^\]]+)\] (.+)$/);
+				// Map JSONL format to LogEntry structure
+				const entry: LogEntry = {
+					timestamp: jsonEntry.timestamp,
+					type: jsonEntry.type as LogEntry["type"],
+				};
 
-			if (
-				eventMatch ||
-				eventBundleMatch ||
-				toolUseMatch ||
-				toolResultMatch ||
-				navigatorMatch ||
-				driverMatch ||
-				stateMatch
-			) {
-				// Save the previous entry if it exists
-				if (currentEntry) {
-					if (dataBuffer.length > 0) {
-						try {
-							currentEntry.data = JSON.parse(dataBuffer.join("\n"));
-						} catch {
-							currentEntry.data = dataBuffer.join("\n");
-						}
-					}
-					entries.push(currentEntry as LogEntry);
+				// Map fields based on entry type
+				switch (jsonEntry.type) {
+					case "EVENT":
+					case "EVENT_BUNDLE":
+						entry.event = jsonEntry.event;
+						entry.data = jsonEntry.data;
+						if (jsonEntry.count) entry.bundleCount = jsonEntry.count;
+						if (jsonEntry.duration) entry.duration = jsonEntry.duration;
+						if (jsonEntry.lastData) entry.data = jsonEntry.lastData;
+						break;
+
+					case "TOOL_USE":
+						entry.actor = jsonEntry.actor;
+						entry.toolName = jsonEntry.toolName;
+						entry.toolUseId = jsonEntry.toolUseId;
+						entry.data = jsonEntry.input;
+						break;
+
+					case "TOOL_RESULT":
+						entry.actor = jsonEntry.actor;
+						entry.toolName = jsonEntry.toolName;
+						entry.toolUseId = jsonEntry.toolUseId;
+						entry.isError = jsonEntry.isError;
+						entry.data = jsonEntry.result;
+						break;
+
+					case "NAVIGATOR_SESSION":
+						entry.type = "NAVIGATOR";
+						entry.sessionId = jsonEntry.sessionId;
+						entry.context = jsonEntry.context;
+						entry.rawMessage = jsonEntry.message;
+						break;
+
+					case "DRIVER_SESSION":
+						entry.type = "DRIVER";
+						entry.sessionId = jsonEntry.sessionId;
+						entry.context = jsonEntry.context;
+						entry.rawMessage = jsonEntry.message;
+						break;
+
+					case "STATE_CHANGE":
+						entry.type = "STATE";
+						entry.description = jsonEntry.description;
+						entry.data = jsonEntry.state;
+						break;
+
+					case "AGENT_COMMUNICATION":
+						// Map agent communication to events
+						entry.type = "EVENT";
+						entry.event = `AGENT_COMM_${jsonEntry.from}_TO_${jsonEntry.to}`;
+						entry.data = {
+							messageType: jsonEntry.messageType,
+							data: jsonEntry.data
+						};
+						break;
+
+					case "SESSION_START":
+						// Skip session start entries as they don't map to LogEntry
+						continue;
+
+					default:
+						// For any other types, try to map generically
+						if (jsonEntry.event) entry.event = jsonEntry.event;
+						if (jsonEntry.description) entry.description = jsonEntry.description;
+						if (jsonEntry.data) entry.data = jsonEntry.data;
+						if (jsonEntry.sessionId) entry.sessionId = jsonEntry.sessionId;
+						if (jsonEntry.context) entry.context = jsonEntry.context;
 				}
 
-				// Start new entry
-				currentEntry = {};
-				dataBuffer = [];
-				isCapturingData = false;
-
-				if (eventMatch) {
-					currentEntry.type = "EVENT";
-					currentEntry.timestamp = eventMatch[1];
-					currentEntry.event = eventMatch[2];
-				} else if (eventBundleMatch) {
-					currentEntry.type = "EVENT_BUNDLE";
-					currentEntry.timestamp = eventBundleMatch[1];
-					currentEntry.event = eventBundleMatch[2];
-				} else if (toolUseMatch) {
-					currentEntry.type = "TOOL_USE";
-					currentEntry.timestamp = toolUseMatch[1];
-					currentEntry.actor = toolUseMatch[2];
-				} else if (toolResultMatch) {
-					currentEntry.type = "TOOL_RESULT";
-					currentEntry.timestamp = toolResultMatch[1];
-					currentEntry.actor = toolResultMatch[2];
-				} else if (navigatorMatch) {
-					currentEntry.type = "NAVIGATOR";
-					currentEntry.timestamp = navigatorMatch[1];
-					currentEntry.sessionId = navigatorMatch[2];
-				} else if (driverMatch) {
-					currentEntry.type = "DRIVER";
-					currentEntry.timestamp = driverMatch[1];
-					currentEntry.sessionId = driverMatch[2];
-				} else if (stateMatch) {
-					currentEntry.type = "STATE";
-					currentEntry.timestamp = stateMatch[1];
-					currentEntry.description = stateMatch[2];
-				}
-			} else if (line.startsWith("Context: ") && currentEntry) {
-				currentEntry.context = line.substring(9);
-			} else if (
-				line.startsWith("Tool: ") &&
-				currentEntry &&
-				(currentEntry.type === "TOOL_USE" ||
-					currentEntry.type === "TOOL_RESULT")
-			) {
-				currentEntry.toolName = line.substring(6);
-			} else if (
-				line.startsWith("ID: ") &&
-				currentEntry &&
-				(currentEntry.type === "TOOL_USE" ||
-					currentEntry.type === "TOOL_RESULT")
-			) {
-				currentEntry.toolUseId = line.substring(4);
-			} else if (
-				line.startsWith("Status: ") &&
-				currentEntry &&
-				currentEntry.type === "TOOL_RESULT"
-			) {
-				currentEntry.isError = line.substring(8) === "ERROR";
-			} else if (
-				line.startsWith("Count: ") &&
-				currentEntry &&
-				currentEntry.type === "EVENT_BUNDLE"
-			) {
-				const match = line.match(/Count: (\d+) events/);
-				if (match) currentEntry.bundleCount = parseInt(match[1], 10);
-			} else if (
-				line.startsWith("Duration: ") &&
-				currentEntry &&
-				currentEntry.type === "EVENT_BUNDLE"
-			) {
-				const match = line.match(/Duration: (\d+)ms/);
-				if (match) currentEntry.duration = parseInt(match[1], 10);
-			} else if (
-				line === "Data:" ||
-				line === "Raw Message:" ||
-				line === "State:" ||
-				line === "Input:" ||
-				line === "Result:" ||
-				line === "Last Data:"
-			) {
-				isCapturingData = true;
-			} else if (
-				line ===
-				"================================================================================"
-			) {
-				isCapturingData = false;
-			} else if (isCapturingData) {
-				dataBuffer.push(line);
+				entries.push(entry);
+			} catch (e) {
+				// If JSON parsing fails, skip the line
+				// This allows backward compatibility with any old format lines
+				continue;
 			}
-		}
-
-		// Don't forget the last entry
-		if (currentEntry) {
-			if (dataBuffer.length > 0) {
-				try {
-					currentEntry.data = JSON.parse(dataBuffer.join("\n"));
-				} catch {
-					currentEntry.data = dataBuffer.join("\n");
-				}
-			}
-			entries.push(currentEntry as LogEntry);
 		}
 
 		return entries;
