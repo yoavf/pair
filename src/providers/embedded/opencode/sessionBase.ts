@@ -82,7 +82,7 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 	>();
 	private readonly EVENT_DEBOUNCE_MS = 1000;
 	private readonly TEXT_PART_DEBOUNCE_MS = 500;
-	private readonly BUFFER_EMISSION_DEBOUNCE_MS = 150;
+	private readonly BUFFER_EMISSION_DEBOUNCE_MS = 300;
 	private bufferEmissionTimers = new Map<string, NodeJS.Timeout>();
 	private lastEmittedBufferContent = new Map<string, string>();
 
