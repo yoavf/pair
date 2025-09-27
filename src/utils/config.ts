@@ -23,6 +23,9 @@ export interface AppConfig {
 	/** Enable sync status updates in footer (default: true) */
 	enableSyncStatus: boolean;
 
+	/** Enable verbose logging for agent communication (default: false) */
+	verboseLogging: boolean;
+
 	/** Model configuration for navigator agent */
 	navigatorConfig: ModelConfig;
 
@@ -37,6 +40,7 @@ export const DEFAULT_CONFIG: AppConfig = {
 	maxPromptFileSize: 100 * 1024, // 100KB
 	sessionHardLimitMs: 30 * 60 * 1000, // 30 minutes
 	enableSyncStatus: true, // Enable by default
+	verboseLogging: false, // Disable by default
 	navigatorConfig: {
 		provider: "claude-code",
 		model: "claude-opus-4-1-20250805", // Opus 4.1 for both planning and monitoring
@@ -70,6 +74,7 @@ export function loadConfig(): AppConfig {
 			60 *
 			1000,
 		enableSyncStatus: process.env.CLAUDE_PAIR_DISABLE_SYNC_STATUS !== "true",
+		verboseLogging: process.env.CLAUDE_PAIR_VERBOSE === "true",
 		navigatorConfig: { ...DEFAULT_CONFIG.navigatorConfig },
 		driverConfig: { ...DEFAULT_CONFIG.driverConfig },
 	};

@@ -2,25 +2,34 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-type LogLevel = "error" | "warn" | "info" | "debug";
+type LogLevel = "error" | "warn" | "info" | "debug" | "verbose";
 
 /**
- * Simple file logger for debugging Claude sessions
- * Controlled by LOG_LEVEL environment variable (error|warn|info|debug)
+ * JSONL file logger for debugging Claude sessions
+ * Controlled by LOG_LEVEL environment variable (error|warn|info|debug|verbose)
  * Disabled by default - set LOG_LEVEL=debug to enable all logging
+ * Set LOG_LEVEL=verbose or use --verbose flag to log all agent communication
  */
 export class Logger {
 	private logFile: string;
 	private logStream: fs.WriteStream | null = null;
 	private logLevel: LogLevel | null;
 	private mirrorToConsole = false;
+	private verbose = false;
 
-	constructor(filename: string = "pair-debug.log") {
+	constructor(filename: string = "pair-debug.log", verbose = false) {
+		this.verbose = verbose;
 		// Parse LOG_LEVEL environment variable
 		const envLevel = process.env.LOG_LEVEL?.toLowerCase();
-		this.logLevel = ["error", "warn", "info", "debug"].includes(envLevel || "")
-			? (envLevel as LogLevel)
-			: null;
+		// If verbose is enabled via CLI or env, set log level to verbose
+		if (verbose || envLevel === "verbose") {
+			this.logLevel = "verbose";
+			this.verbose = true;
+		} else if (["error", "warn", "info", "debug"].includes(envLevel || "")) {
+			this.logLevel = envLevel as LogLevel;
+		} else {
+			this.logLevel = null;
+		}
 
 		// Only initialize file logging if LOG_LEVEL is set
 		if (this.logLevel) {
@@ -43,25 +52,31 @@ export class Logger {
 				this.logFile = path.join(logsDir, filename);
 			}
 
-			// Create log file with timestamp header
+			// Create log file for JSONL output
 			const timestamp = new Date().toISOString();
 			this.logStream = fs.createWriteStream(this.logFile, { flags: "w" });
-			const header = [
-				`=== Pair Programming Debug Log - ${timestamp} ===`,
-				`=== Log Level: ${this.logLevel.toUpperCase()} ===`,
-				`=== PID: ${process.pid} CWD: ${process.cwd()} ===`,
-				"",
-			].join("\n");
-			this.logStream.write(header);
+			// Write initial log entry in JSONL format
+			this.writeJsonl({
+				type: "SESSION_START",
+				timestamp,
+				level: this.logLevel.toUpperCase(),
+				pid: process.pid,
+				cwd: process.cwd(),
+			});
 		} else {
 			this.logFile = "";
 		}
 	}
 
+	private writeJsonl(data: any): void {
+		if (!this.logStream) return;
+		this.logStream.write(JSON.stringify(data) + "\n");
+	}
+
 	private shouldLog(level: LogLevel): boolean {
 		if (!this.logLevel || !this.logStream) return false;
 
-		const levels: LogLevel[] = ["error", "warn", "info", "debug"];
+		const levels: LogLevel[] = ["error", "warn", "info", "debug", "verbose"];
 		const currentLevelIndex = levels.indexOf(this.logLevel);
 		const messageLevelIndex = levels.indexOf(level);
 
@@ -70,71 +85,44 @@ export class Logger {
 
 	// biome-ignore lint/suspicious/noExplicitAny: Generic logging interface for flexibility
 	logNavigatorSession(sessionId: string, message: any, context?: string) {
-		if (!this.shouldLog("debug") || !this.logStream) return;
+		// In verbose mode, log all session data; otherwise only at debug level
+		const level = this.verbose ? "verbose" : "debug";
+		if (!this.shouldLog(level) || !this.logStream) return;
 
-		const entry = {
+		this.writeJsonl({
 			timestamp: new Date().toISOString(),
 			type: "NAVIGATOR_SESSION",
 			sessionId,
 			context,
-			message: JSON.stringify(message, null, 2),
-		};
-
-		const lines = [
-			`NAVIGATOR [${entry.timestamp}] ${sessionId}`,
-			context ? `Context: ${context}` : undefined,
-			`Raw Message:`,
-			entry.message,
-			`${"=".repeat(80)}`,
-			"",
-		].filter(Boolean) as string[];
-		const output = lines.join("\n");
-		this.logStream.write(output);
+			message: this.verbose ? message : this.truncateMessage(message),
+		});
 	}
 
 	// biome-ignore lint/suspicious/noExplicitAny: Generic logging interface for flexibility
 	logDriverSession(sessionId: string, message: any, context?: string) {
-		if (!this.shouldLog("debug") || !this.logStream) return;
+		// In verbose mode, log all session data; otherwise only at debug level
+		const level = this.verbose ? "verbose" : "debug";
+		if (!this.shouldLog(level) || !this.logStream) return;
 
-		const entry = {
+		this.writeJsonl({
 			timestamp: new Date().toISOString(),
 			type: "DRIVER_SESSION",
 			sessionId,
 			context,
-			message: JSON.stringify(message, null, 2),
-		};
-
-		const lines = [
-			`DRIVER [${entry.timestamp}] ${sessionId}`,
-			context ? `Context: ${context}` : undefined,
-			`Raw Message:`,
-			entry.message,
-			`${"=".repeat(80)}`,
-			"",
-		].filter(Boolean) as string[];
-		const output = lines.join("\n");
-		this.logStream.write(output);
+			message: this.verbose ? message : this.truncateMessage(message),
+		});
 	}
 
 	// biome-ignore lint/suspicious/noExplicitAny: Generic logging interface for flexibility
 	logEvent(event: string, data: any) {
 		if (!this.shouldLog("info") || !this.logStream) return;
 
-		const entry = {
+		this.writeJsonl({
 			timestamp: new Date().toISOString(),
+			type: "EVENT",
 			event,
-			data: JSON.stringify(data, null, 2),
-		};
-
-		const lines = [
-			`EVENT [${entry.timestamp}] ${event}`,
-			`Data:`,
-			entry.data,
-			`${"=".repeat(80)}`,
-			"",
-		];
-		const output = lines.join("\n");
-		this.logStream.write(output);
+			data,
+		});
 	}
 
 	// Enhanced tool logging with detailed information
@@ -142,26 +130,14 @@ export class Logger {
 	logToolUse(actor: string, toolName: string, input: any, toolUseId?: string) {
 		if (!this.shouldLog("info") || !this.logStream) return;
 
-		const entry = {
+		this.writeJsonl({
 			timestamp: new Date().toISOString(),
+			type: "TOOL_USE",
 			actor,
 			toolName,
 			toolUseId,
-			input: this.sanitizeToolInput(toolName, input),
-		};
-
-		const lines = [
-			`TOOL_USE [${entry.timestamp}] ${actor.toUpperCase()}`,
-			`Tool: ${toolName}`,
-			toolUseId ? `ID: ${toolUseId}` : undefined,
-			`Input:`,
-			JSON.stringify(entry.input, null, 2),
-			`${"=".repeat(80)}`,
-			"",
-		].filter(Boolean) as string[];
-
-		const output = lines.join("\n");
-		this.logStream.write(output);
+			input: this.verbose ? input : this.sanitizeToolInput(toolName, input),
+		});
 	}
 
 	// Enhanced tool result logging
@@ -175,29 +151,15 @@ export class Logger {
 	) {
 		if (!this.shouldLog("info") || !this.logStream) return;
 
-		const sanitizedResult = this.sanitizeToolResult(toolName, result, isError);
-		const entry = {
+		this.writeJsonl({
 			timestamp: new Date().toISOString(),
+			type: "TOOL_RESULT",
 			actor,
 			toolName,
 			toolUseId,
 			isError: isError || false,
-			result: sanitizedResult,
-		};
-
-		const lines = [
-			`TOOL_RESULT [${entry.timestamp}] ${actor.toUpperCase()}`,
-			`Tool: ${toolName}`,
-			`ID: ${toolUseId}`,
-			isError ? `Status: ERROR` : `Status: SUCCESS`,
-			`Result:`,
-			JSON.stringify(entry.result, null, 2),
-			`${"=".repeat(80)}`,
-			"",
-		];
-
-		const output = lines.join("\n");
-		this.logStream.write(output);
+			result: this.verbose ? result : this.sanitizeToolResult(toolName, result, isError),
+		});
 	}
 
 	// Track repeating events with bundling
@@ -259,35 +221,26 @@ export class Logger {
 
 		if (bundle.count === 1) {
 			// Single event, log normally
-			const lines = [
-				`EVENT [${bundle.lastTimestamp}] ${eventKey}`,
-				bundle.lastData ? `Data:` : undefined,
-				bundle.lastData ? JSON.stringify(bundle.lastData, null, 2) : undefined,
-				`${"=".repeat(80)}`,
-				"",
-			].filter(Boolean) as string[];
-
-			const output = lines.join("\n");
-			this.logStream.write(output);
+			this.writeJsonl({
+				timestamp: bundle.lastTimestamp,
+				type: "EVENT",
+				event: eventKey,
+				data: bundle.lastData,
+			});
 		} else {
 			// Bundled events
 			const duration =
 				new Date(bundle.lastTimestamp).getTime() -
 				new Date(bundle.firstTimestamp).getTime();
-			const lines = [
-				`EVENT_BUNDLE [${bundle.lastTimestamp}] ${eventKey}`,
-				`Count: ${bundle.count} events`,
-				`Duration: ${duration}ms`,
-				`First: ${bundle.firstTimestamp}`,
-				`Last: ${bundle.lastTimestamp}`,
-				bundle.lastData ? `Last Data:` : undefined,
-				bundle.lastData ? JSON.stringify(bundle.lastData, null, 2) : undefined,
-				`${"=".repeat(80)}`,
-				"",
-			].filter(Boolean) as string[];
-
-			const output = lines.join("\n");
-			this.logStream.write(output);
+			this.writeJsonl({
+				timestamp: bundle.lastTimestamp,
+				type: "EVENT_BUNDLE",
+				event: eventKey,
+				count: bundle.count,
+				duration,
+				firstTimestamp: bundle.firstTimestamp,
+				lastData: bundle.lastData,
+			});
 		}
 	}
 
@@ -430,22 +383,34 @@ export class Logger {
 	logStateChange(description: string, state: any) {
 		if (!this.shouldLog("debug") || !this.logStream) return;
 
-		const entry = {
+		this.writeJsonl({
 			timestamp: new Date().toISOString(),
+			type: "STATE_CHANGE",
 			description,
-			state: JSON.stringify(state, null, 2),
-		};
+			state,
+		});
+	}
 
-		const lines = [
-			`STATE [${entry.timestamp}] ${description}`,
-			`State:`,
-			entry.state,
-			`${"=".repeat(80)}`,
-			"",
-		];
-		const output = lines.join("\n");
-		this.logStream.write(output);
-		if (this.mirrorToConsole) console.log(output);
+	// Helper to truncate long messages when not in verbose mode
+	private truncateMessage(message: any, maxLength = 500): any {
+		const str = typeof message === "string" ? message : JSON.stringify(message);
+		if (str.length <= maxLength) return message;
+		return str.substring(0, maxLength) + "... (truncated)";
+	}
+
+	// Log agent communication in verbose mode
+	// biome-ignore lint/suspicious/noExplicitAny: Generic logging interface for flexibility
+	logAgentCommunication(from: string, to: string, messageType: string, data: any) {
+		if (!this.shouldLog("verbose") || !this.logStream) return;
+
+		this.writeJsonl({
+			timestamp: new Date().toISOString(),
+			type: "AGENT_COMMUNICATION",
+			from,
+			to,
+			messageType,
+			data,
+		});
 	}
 
 	getFilePath(): string | null {

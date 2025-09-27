@@ -55,6 +55,7 @@ pair -p "Refactor" --navigator opencode --navigator-model openrouter/google/gemi
 - `--dir <path>`: Project directory path (default: current directory)
 - `-p, --prompt <text>`: Task prompt as text
 - `-f, --file <file>`: Load prompt from file (.txt, .md, .json, .yaml, .yml)
+- `-v, --verbose`: Enable verbose logging (logs all agent communication)
 - `--navigator <provider>`: Set navigator provider (claude-code, opencode)
 - `--navigator-model <model>`: Set navigator model
 - `--driver <provider>`: Set driver provider
@@ -142,9 +143,44 @@ When `opencode` is on your PATH, the provider will automatically launch a local 
 
 ### Debugging and Logging
 - `LOG_LEVEL`: Enable file logging (default: disabled)
+  - `error`: Log only errors
+  - `warn`: Log warnings and errors
+  - `info`: Log general information, tools usage
   - `debug`: Enable detailed session logging
+  - `verbose`: Log all agent communication data (same as using -v flag)
+- `CLAUDE_PAIR_VERBOSE`: Set to "true" to enable verbose logging (same as -v flag)
+- `-v, --verbose`: Command-line flag to enable verbose logging
 
-When enabled, logs are written to `~/.pair/logs/pair-debug.log`
+When enabled, logs are written to `~/.pair/logs/pair-debug.log` in JSONL format (one JSON object per line)
+
+#### Log Format
+The logger now uses JSONL format for easier parsing and analysis:
+- Each log entry is a single JSON object on its own line
+- Includes timestamp, event type, and relevant data
+- In verbose mode, includes full agent communication data
+- In normal mode, data is truncated to reasonable lengths
+
+Example:
+```bash
+# Enable verbose logging via CLI
+pair -v -p "Add logging"
+
+# Enable verbose logging via environment
+LOG_LEVEL=verbose pair -p "Fix bug"
+
+# View logs (each line is a JSON object)
+tail -f ~/.pair/logs/pair-debug.log | jq '.'
+```
+
+#### Log Event Types
+- `SESSION_START`: Initial log entry with session info
+- `EVENT`: General events in the application
+- `TOOL_USE`: Tool invocations by agents
+- `TOOL_RESULT`: Results from tool executions
+- `NAVIGATOR_SESSION`: Navigator agent messages (verbose mode)
+- `DRIVER_SESSION`: Driver agent messages (verbose mode)
+- `AGENT_COMMUNICATION`: Inter-agent communication (verbose mode)
+- `STATE_CHANGE`: Application state changes
 
 Example:
 ```bash

@@ -40,6 +40,7 @@ function createProgram(): Command {
 		.option("-p, --prompt <text>", "Task prompt to implement")
 		.option("-d, --dir <path>", "Project directory", process.cwd())
 		.option("-f, --file <file>", "Read prompt from file (overrides --prompt)")
+		.option("-v, --verbose", "Enable verbose logging")
 		.option("--navigator <provider>", "Navigator provider", "claude-code")
 		.option("--navigator-model <model>", "Navigator model")
 		.option("--driver <provider>", "Driver provider", "claude-code")
@@ -69,6 +70,9 @@ export async function parseCliArgs(args: string[]): Promise<ParsedCliArgs> {
 	const options = program.opts();
 
 	// Apply CLI overrides to config
+	if (options.verbose) {
+		config.verboseLogging = true;
+	}
 	if (options.navigator) {
 		config.navigatorConfig.provider = options.navigator;
 	}
