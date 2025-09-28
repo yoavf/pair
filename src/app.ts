@@ -4,6 +4,7 @@
 
 import os from "node:os";
 import path from "node:path";
+import { isClaudeCodeAuthError, getAuthErrorMessage } from "./utils/authErrors.js";
 import {
 	DEFAULT_PAIR_CONFIG,
 	DRIVER_PROMPT,
@@ -271,8 +272,16 @@ export class PairApp {
 		} catch (error) {
 			this.logger.logEvent("APP_START_FAILED", {
 				error: error instanceof Error ? error.message : String(error),
+				isAuthError: isClaudeCodeAuthError(error),
 			});
-			console.error("Failed to start:", error);
+
+			// Check for authentication error and show helpful message
+			if (isClaudeCodeAuthError(error)) {
+				console.error("\n" + getAuthErrorMessage() + "\n");
+			} else {
+				console.error("Failed to start:", error);
+			}
+
 			await this.cleanup();
 			return; // Do not hard-exit
 		}

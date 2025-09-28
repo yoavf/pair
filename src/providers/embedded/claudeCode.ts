@@ -8,6 +8,7 @@
 import { query } from "@anthropic-ai/claude-code";
 import { isAllToolsEnabled } from "../../types/core.js";
 import { AsyncUserMessageStream } from "../../utils/streamInput.js";
+import { isClaudeCodeAuthError } from "../../utils/authErrors.js";
 import type {
 	AgentInputStream,
 	AgentMessage,
@@ -97,7 +98,16 @@ class ClaudeCodeSession implements AgentSession {
 				yield message as AgentMessage;
 			}
 		} catch (error) {
-			// Add context to session errors
+			// Check for authentication errors
+			if (isClaudeCodeAuthError(error)) {
+				const authError = new Error(
+					"Claude Code authentication required. Please run 'claude' and use '/login' to authenticate."
+				);
+				authError.cause = error;
+				throw authError;
+			}
+
+			// Add context to other session errors
 			const contextualError = new Error(
 				`Claude Code session failed (session_id: ${this.sessionId || "none"}): ${
 					error instanceof Error ? error.message : String(error)
@@ -202,7 +212,16 @@ class ClaudeCodeStreamingSession implements StreamingAgentSession {
 				yield message as AgentMessage;
 			}
 		} catch (error) {
-			// Add context to streaming session errors
+			// Check for authentication errors
+			if (isClaudeCodeAuthError(error)) {
+				const authError = new Error(
+					"Claude Code authentication required. Please run 'claude' and use '/login' to authenticate."
+				);
+				authError.cause = error;
+				throw authError;
+			}
+
+			// Add context to other streaming session errors
 			const contextualError = new Error(
 				`Claude Code streaming session failed (session_id: ${this.sessionId || "none"}): ${
 					error instanceof Error ? error.message : String(error)
