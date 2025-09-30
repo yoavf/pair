@@ -15,8 +15,8 @@ import {
 } from "../../src/types/errors.js";
 import type { EmbeddedAgentProvider } from "../../src/providers/types.js";
 
-// Mock the Claude Code SDK module
-vi.mock("@anthropic-ai/claude-code", () => ({
+// Mock the Claude Agent SDK module
+vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 	query: vi.fn(),
 	tool: vi.fn().mockImplementation((name: string, description: string, schema: any, handler: any) => ({
 		name,

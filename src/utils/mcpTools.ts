@@ -2,10 +2,10 @@
  * MCP Tool Definitions for Pair Programming Communication
  *
  * Defines structured tools for communication between Navigator and Driver agents
- * using the Claude Code SDK MCP framework with zod validation.
+ * using the Claude Agent SDK MCP framework with zod validation.
  */
 
-import { tool } from "@anthropic-ai/claude-code";
+import { tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 
 /**

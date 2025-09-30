@@ -6,8 +6,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ClaudeCodeProvider } from '../../../src/providers/embedded/claudeCode.js';
 import type { SessionOptions } from '../../../src/providers/types.js';
 
-// Mock the Claude Code SDK
-vi.mock("@anthropic-ai/claude-code", () => ({
+// Mock the Claude Agent SDK
+vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: vi.fn().mockReturnValue({
     [Symbol.asyncIterator]: async function* () {
       // Mock messages from Claude

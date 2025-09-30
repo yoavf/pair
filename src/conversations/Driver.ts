@@ -284,7 +284,7 @@ export class Driver extends EventEmitter {
 									input: item.input,
 									trackingId, // Include tracking ID if available
 								});
-								// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK tool_use item structure
+								// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK tool_use item structure
 								const toolUseId = (item as any).id || (item as any).tool_use_id;
 								if (toolUseId) {
 									this.pendingTools.add(toolUseId);
@@ -403,11 +403,11 @@ export class Driver extends EventEmitter {
 					}
 				} else if (
 					message.type === "user" &&
-					// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK user message structure
+					// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK user message structure
 					(message as any).message?.content
 				) {
 					// Scan for tool_result blocks to clear pending tool_use ids
-					// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK user message content
+					// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK user message content
 					const ucontent = (message as any).message.content;
 					if (Array.isArray(ucontent)) {
 						for (const item of ucontent) {
@@ -437,7 +437,7 @@ export class Driver extends EventEmitter {
 										});
 									}
 								} catch {}
-								// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK tool_result item structure
+								// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK tool_result item structure
 								const tid = (item as any).tool_use_id;
 								if (tid && this.pendingTools.has(tid)) {
 									this.pendingTools.delete(tid);

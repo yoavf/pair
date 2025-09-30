@@ -6,8 +6,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Driver } from "../../src/conversations/Driver.js";
 import { Logger } from "../../src/utils/logger.js";
 
-// Mock the Claude Code SDK
-vi.mock("@anthropic-ai/claude-code", () => ({
+// Mock the Claude Agent SDK
+vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 	query: vi.fn(),
 	tool: vi.fn(),
 	createSdkMcpServer: vi.fn(),
