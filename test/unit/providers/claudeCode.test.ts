@@ -7,7 +7,7 @@ import { ClaudeCodeProvider } from '../../../src/providers/embedded/claudeCode.j
 import type { SessionOptions } from '../../../src/providers/types.js';
 
 // Mock the Claude Code SDK
-vi.mock("@anthropic-ai/claude-code", () => ({
+vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: vi.fn().mockReturnValue({
     [Symbol.asyncIterator]: async function* () {
       // Mock messages from Claude

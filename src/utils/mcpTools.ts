@@ -5,7 +5,7 @@
  * using the Claude Code SDK MCP framework with zod validation.
  */
 
-import { tool } from "@anthropic-ai/claude-code";
+import { tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 
 /**

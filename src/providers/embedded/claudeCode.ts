@@ -5,7 +5,7 @@
  * to MCP servers via HTTP/SSE
  */
 
-import { query } from "@anthropic-ai/claude-code";
+import { query } from "@anthropic-ai/claude-agent-sdk";
 import { isAllToolsEnabled } from "../../types/core.js";
 import { AsyncUserMessageStream } from "../../utils/streamInput.js";
 import type {

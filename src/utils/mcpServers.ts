@@ -4,7 +4,7 @@
  * Creates MCP servers for Navigator and Driver agents using the Claude Code SDK.
  */
 
-import { createSdkMcpServer } from "@anthropic-ai/claude-code";
+import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import {
 	driverRequestGuidance,
 	driverRequestReview,

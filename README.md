@@ -247,7 +247,7 @@ src/
 ## Requirements
 
 - Node.js 18+
-- Claude Code SDK (`@anthropic-ai/claude-code`)
+- Claude Code SDK (`@anthropic-ai/claude-agent-sdk`)
 - OpenCode SDK (`@opencode-ai/sdk`) when using the OpenCode provider
 - OpenCode CLI (`opencode`) on your PATH if you rely on Pair to auto-start the OpenCode server
 - Valid Anthropic API key configured

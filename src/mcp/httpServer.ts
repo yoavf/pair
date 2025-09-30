@@ -1,6 +1,6 @@
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import { parse as parseUrl } from "node:url";
-import { createSdkMcpServer } from "@anthropic-ai/claude-code";
+import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import {
 	driverRequestGuidance,
 	driverRequestReview,
