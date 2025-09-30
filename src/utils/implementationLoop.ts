@@ -207,12 +207,12 @@ export class ImplementationLoop {
 				messageLength: messageForNavigator.length,
 			});
 
-			// biome-ignore lint/suspicious/noExplicitAny: Navigator command response type from Claude Code SDK
+			// biome-ignore lint/suspicious/noExplicitAny: Navigator command response type from Claude Agent SDK
 			const _navResp: any = await this.navigator.processDriverMessage(
 				messageForNavigator,
 				true,
 			); // true = review was requested
-			// biome-ignore lint/suspicious/noExplicitAny: Navigator command array type from Claude Code SDK
+			// biome-ignore lint/suspicious/noExplicitAny: Navigator command array type from Claude Agent SDK
 			const navCommands: any[] = Array.isArray(_navResp)
 				? _navResp
 				: _navResp

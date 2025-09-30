@@ -237,7 +237,7 @@ export interface ExternalAgentProvider extends AgentProvider {
 }
 
 /**
- * MCP Server configuration for Claude Code SDK
+ * MCP Server configuration for Claude Agent SDK
  */
 export interface McpServerConfig {
 	type: "sse" | "stdio";

@@ -8,7 +8,7 @@ export class AsyncUserMessageStream implements AsyncIterable<any> {
 
 	pushText(text: string) {
 		if (this.done) return;
-		// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK user message structure
+		// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK user message structure
 		const userMessage: any = {
 			type: "user",
 			userType: "external",
@@ -32,7 +32,7 @@ export class AsyncUserMessageStream implements AsyncIterable<any> {
 		}
 	}
 
-	// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK user message structure
+	// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK user message structure
 	private enqueue(item: any) {
 		if (this.resolvers.length) {
 			const resolve = this.resolvers.shift();
@@ -44,7 +44,7 @@ export class AsyncUserMessageStream implements AsyncIterable<any> {
 		}
 	}
 
-	// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK user message interface
+	// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK user message interface
 	[Symbol.asyncIterator](): AsyncIterator<any> {
 		return {
 			next: () => {
@@ -60,7 +60,7 @@ export class AsyncUserMessageStream implements AsyncIterable<any> {
 				if (this.done) {
 					return Promise.resolve({ value: undefined, done: true });
 				}
-				// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK iterator interface
+				// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK iterator interface
 				return new Promise<IteratorResult<any>>((resolve) => {
 					this.resolvers.push(resolve);
 				});

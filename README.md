@@ -90,7 +90,7 @@ Each role (navigator, driver) can use different providers and models:
 
 #### Available Providers
 
-- `claude-code` (default) - Uses Claude Code SDK
+- `claude-code` (default) - Uses Claude Agent SDK
 - `opencode` - Uses OpenCode SDK
 
 #### Claude Code Models
@@ -247,7 +247,7 @@ src/
 ## Requirements
 
 - Node.js 18+
-- Claude Code SDK (`@anthropic-ai/claude-agent-sdk`)
+- Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`)
 - OpenCode SDK (`@opencode-ai/sdk`) when using the OpenCode provider
 - OpenCode CLI (`opencode`) on your PATH if you rely on Pair to auto-start the OpenCode server
 - Valid Anthropic API key configured

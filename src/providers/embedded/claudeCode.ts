@@ -1,7 +1,7 @@
 /**
  * Claude Code provider implementation
  *
- * Uses the Claude Code SDK to create embedded agent sessions that connect
+ * Uses the Claude Agent SDK to create embedded agent sessions that connect
  * to MCP servers via HTTP/SSE
  */
 
@@ -24,7 +24,7 @@ import { BaseEmbeddedProvider } from "./base.js";
  */
 class ClaudeCodeSession implements AgentSession {
 	sessionId: string | null = null;
-	// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK returns internal generator with any message type
+	// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK returns internal generator with any message type
 	private iterator: AsyncGenerator<any, void>;
 	private inputStream: AsyncUserMessageStream;
 	private ended = false;
@@ -38,12 +38,12 @@ class ClaudeCodeSession implements AgentSession {
 					[options.role]: {
 						type: "sse",
 						url: options.mcpServerUrl,
-						// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK internal McpServerConfig type differs from ours
+						// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK internal McpServerConfig type differs from ours
 					} as any,
 				}
 			: {};
 
-		// Convert options to Claude Code SDK format
+		// Convert options to Claude Agent SDK format
 		const queryOptions: any = {
 			cwd: options.projectPath,
 			appendSystemPrompt: options.systemPrompt,
@@ -53,7 +53,7 @@ class ClaudeCodeSession implements AgentSession {
 			permissionMode: options.permissionMode || "default",
 			maxTurns: options.maxTurns,
 			includePartialMessages: options.includePartialMessages ?? true,
-			// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK canUseTool has different signature than our interface
+			// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK canUseTool has different signature than our interface
 			canUseTool: options.canUseTool as any,
 		};
 
@@ -64,10 +64,10 @@ class ClaudeCodeSession implements AgentSession {
 
 		// Create the query session
 		this.iterator = query({
-			// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK query expects different prompt type
+			// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK query expects different prompt type
 			prompt: this.inputStream as any,
 			options: queryOptions,
-			// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK returns internal generator type
+			// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK returns internal generator type
 		}) as AsyncGenerator<any, void>;
 	}
 
@@ -112,10 +112,10 @@ class ClaudeCodeSession implements AgentSession {
 	 * Interrupt the session
 	 */
 	async interrupt(): Promise<void> {
-		// Use Claude SDK's interrupt if available
-		// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK internal iterator may have interrupt method
+		// Use Claude Agent SDK's interrupt if available
+		// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK internal iterator may have interrupt method
 		if ((this.iterator as any).interrupt) {
-			// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK internal iterator may have interrupt method
+			// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK internal iterator may have interrupt method
 			await (this.iterator as any).interrupt();
 		}
 	}
@@ -135,7 +135,7 @@ class ClaudeCodeSession implements AgentSession {
 class ClaudeCodeStreamingSession implements StreamingAgentSession {
 	sessionId: string | null = null;
 	inputStream: AgentInputStream;
-	// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK returns internal generator with any message type
+	// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK returns internal generator with any message type
 	private iterator: AsyncGenerator<any, void>;
 
 	constructor(options: StreamingSessionOptions) {
@@ -155,7 +155,7 @@ class ClaudeCodeStreamingSession implements StreamingAgentSession {
 					[options.mcpRole]: {
 						type: "sse",
 						url: options.mcpServerUrl,
-						// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK internal McpServerConfig type differs from ours
+						// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK internal McpServerConfig type differs from ours
 					} as any,
 				}
 			: { [options.mcpRole]: options.embeddedMcpServer };
@@ -170,7 +170,7 @@ class ClaudeCodeStreamingSession implements StreamingAgentSession {
 			permissionMode: "default",
 			maxTurns: options.maxTurns,
 			includePartialMessages: options.includePartialMessages ?? true,
-			// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK canUseTool has different signature than our interface
+			// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK canUseTool has different signature than our interface
 			canUseTool: options.canUseTool as any,
 		};
 
@@ -180,10 +180,10 @@ class ClaudeCodeStreamingSession implements StreamingAgentSession {
 		}
 
 		this.iterator = query({
-			// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK query expects different prompt type
+			// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK query expects different prompt type
 			prompt: this.inputStream as any,
 			options: queryOptions,
-			// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK returns internal generator type
+			// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK returns internal generator type
 		}) as AsyncGenerator<any, void>;
 	}
 
@@ -217,9 +217,9 @@ class ClaudeCodeStreamingSession implements StreamingAgentSession {
 	 * Interrupt the session
 	 */
 	async interrupt(): Promise<void> {
-		// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK internal iterator may have interrupt method
+		// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK internal iterator may have interrupt method
 		if ((this.iterator as any).interrupt) {
-			// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK internal iterator may have interrupt method
+			// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK internal iterator may have interrupt method
 			await (this.iterator as any).interrupt();
 		}
 	}
@@ -245,7 +245,7 @@ export class ClaudeCodeProvider extends BaseEmbeddedProvider {
 		// Pass model ID through options if configured
 		const enhancedOptions = { ...options };
 		if (this.modelId) {
-			// Claude Code SDK expects the model in options
+			// Claude Agent SDK expects the model in options
 			(enhancedOptions as any).model = this.modelId;
 		}
 		return new ClaudeCodeSession(enhancedOptions);
@@ -260,7 +260,7 @@ export class ClaudeCodeProvider extends BaseEmbeddedProvider {
 		// Pass model ID through options if configured
 		const enhancedOptions = { ...options };
 		if (this.modelId) {
-			// Claude Code SDK expects the model in options
+			// Claude Agent SDK expects the model in options
 			(enhancedOptions as any).model = this.modelId;
 		}
 		return new ClaudeCodeStreamingSession(enhancedOptions);

@@ -1,5 +1,5 @@
 /**
- * Mock interface for Claude Code SDK to enable deterministic testing
+ * Mock interface for Claude Agent SDK to enable deterministic testing
  */
 
 export interface MockQueryMessage {
@@ -49,7 +49,7 @@ export class MockClaudeCodeSdk {
 	}
 
 	/**
-	 * Mock implementation of Claude Code SDK query function
+	 * Mock implementation of Claude Agent SDK query function
 	 */
 	async* query(options: {
 		prompt: any;

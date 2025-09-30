@@ -185,7 +185,7 @@ export class InkDisplayManager {
 		this.appendMessage(message);
 	}
 
-	// biome-ignore lint/suspicious/noExplicitAny: Tool parameters from Claude Code SDK have varied structure
+	// biome-ignore lint/suspicious/noExplicitAny: Tool parameters from Claude Agent SDK have varied structure
 	showToolUse(role: Role, tool: string, params?: any) {
 		const trackingId = params?.trackingId;
 		delete params?.trackingId; // Remove from params before processing

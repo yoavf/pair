@@ -637,7 +637,7 @@ DO NOT call mcp__navigator__navigatorCodeReview for permission requests.`;
 										input: item.input,
 									});
 								}
-								// biome-ignore lint/suspicious/noExplicitAny: Claude Code SDK tool_use item structure
+								// biome-ignore lint/suspicious/noExplicitAny: Claude Agent SDK tool_use item structure
 								const toolUseId = (item as any).id || (item as any).tool_use_id;
 								if (toolUseId) {
 									this.pendingTools.add(toolUseId);

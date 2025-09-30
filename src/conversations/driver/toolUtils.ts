@@ -28,6 +28,6 @@ export const isApprovedEditTool = sharedIsApprovedEditTool;
 
 /**
  * Extract content from a tool result item
- * @param item - The tool result item from Claude Code SDK
+ * @param item - The tool result item from Claude Agent SDK
  */
 export const extractResultContent = sharedExtractResultContent;

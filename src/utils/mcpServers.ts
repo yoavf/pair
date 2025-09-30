@@ -1,7 +1,7 @@
 /**
  * MCP Server Configurations for Pair Programming Communication
  *
- * Creates MCP servers for Navigator and Driver agents using the Claude Code SDK.
+ * Creates MCP servers for Navigator and Driver agents using the Claude Agent SDK.
  */
 
 import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
