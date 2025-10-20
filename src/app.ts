@@ -178,8 +178,16 @@ export class PairApp {
 		};
 
 		// Permission broker: canUseTool handler wired to Navigator
-		const canUseTool =
-			this.permissionHandler.createCanUseToolHandler(getDriverTranscript);
+		const canUseTool = this.permissionHandler.createCanUseToolHandler(
+			getDriverTranscript,
+			{
+				onDenied: ({ providerCallId }) => {
+					if (providerCallId) {
+						this.driver?.handlePermissionDenied(providerCallId);
+					}
+				},
+			},
+		);
 
 		this.driver = new Driver(
 			DRIVER_PROMPT,

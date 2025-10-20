@@ -2,8 +2,6 @@
  * Task input handling utilities
  */
 
-import readline from "node:readline";
-
 /**
  * Get task from user input (supports multi-line)
  */
@@ -67,7 +65,7 @@ export async function getTaskFromUser(): Promise<string> {
 					);
 					process.stdout.write("\r");
 					const prompt = lines.length === 0 ? "> " : "  ";
-					process.stdout.write(prompt + lineWithoutBackslash + "\n");
+					process.stdout.write(`${prompt + lineWithoutBackslash}\n`);
 
 					currentInput = "";
 					writePrompt();

@@ -14,7 +14,6 @@ export class Logger {
 	private logFile: string;
 	private logStream: fs.WriteStream | null = null;
 	private logLevel: LogLevel | null;
-	private mirrorToConsole = false;
 	private verbose = false;
 
 	constructor(filename: string = "pair-debug.log", verbose = false) {
@@ -75,7 +74,7 @@ export class Logger {
 
 	private writeJsonl(data: any): void {
 		if (!this.logStream) return;
-		this.logStream.write(JSON.stringify(data) + "\n");
+		this.logStream.write(`${JSON.stringify(data)}\n`);
 	}
 
 	private shouldLog(level: LogLevel): boolean {
@@ -402,7 +401,7 @@ export class Logger {
 	private truncateMessage(message: any, maxLength = 500): any {
 		const str = typeof message === "string" ? message : JSON.stringify(message);
 		if (str.length <= maxLength) return message;
-		return str.substring(0, maxLength) + "... (truncated)";
+		return `${str.substring(0, maxLength)}... (truncated)`;
 	}
 
 	// Log agent communication in verbose mode

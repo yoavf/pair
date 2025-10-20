@@ -14,6 +14,7 @@ export interface TrackedTool {
 	reviewComment?: string;
 	providerCallId?: string;
 	permissionRequestId?: string;
+	displayPrimed?: boolean;
 }
 
 export interface ToolReviewResult {
@@ -174,6 +175,18 @@ export class ToolTracker {
 		if (tool) {
 			tool.status = "displayed";
 		}
+	}
+
+	markDisplayPrimed(toolId: string): void {
+		const tool = this.tools.get(toolId);
+		if (tool) {
+			tool.displayPrimed = true;
+		}
+	}
+
+	isDisplayPrimed(toolId: string): boolean {
+		const tool = this.tools.get(toolId);
+		return tool?.displayPrimed === true;
 	}
 
 	/**

@@ -47,4 +47,51 @@ describe("PermissionHandler", () => {
 			expect.any(Object),
 		);
 	});
+
+	it("invokes onDenied hook when permission is rejected", async () => {
+		const reviewPermission = vi.fn().mockResolvedValue({
+			allowed: false,
+			reason: "Navigator said no",
+		});
+		const navigatorMock = {
+			reviewPermission,
+		} as unknown as Navigator;
+		const displayMock = {
+			showTransfer: vi.fn(),
+			updateStatus: vi.fn(),
+		} as unknown as InkDisplayManager;
+		const loggerMock = {
+			logEvent: vi.fn(),
+			logAgentCommunication: vi.fn(),
+		} as unknown as Logger;
+		const handler = new PermissionHandler(
+			navigatorMock,
+			displayMock,
+			loggerMock,
+		);
+		const trackingId = toolTracker.registerTool("Edit", {}, "driver");
+		toolTracker.associateCallId(trackingId, "call_denied");
+		const onDenied = vi.fn();
+		const canUseTool = handler.createCanUseToolHandler(
+			() => "latest transcript",
+			{ onDenied },
+		);
+
+		const decision = await canUseTool(
+			"Edit",
+			{ file_path: "demo.txt" },
+			{ toolId: "call_denied" },
+		);
+
+		expect(decision).toEqual({
+			behavior: "deny",
+			message: "Navigator said no",
+		});
+		expect(onDenied).toHaveBeenCalledTimes(1);
+		expect(onDenied).toHaveBeenCalledWith({
+			toolName: "Edit",
+			providerCallId: "call_denied",
+			reason: "Navigator said no",
+		});
+	});
 });

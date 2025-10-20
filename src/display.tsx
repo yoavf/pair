@@ -422,6 +422,9 @@ export class InkDisplayManager {
 			this.setPhaseFn(phase);
 		}
 		this.currentPhase = phase;
+		if (phase === "complete" && this.updateActivity) {
+			this.updateActivity("");
+		}
 		// Refresh to either start/stop showing sync info based on phase
 		if (this.config.enableSyncStatus) {
 			this.refreshSyncStatus();

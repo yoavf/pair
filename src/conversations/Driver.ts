@@ -312,12 +312,17 @@ export class Driver extends EventEmitter {
 										trackingId,
 									});
 
-									// Store MCP tool results for driver communication
 									if (!item.name) {
 										this.logger.logEvent("DRIVER_TOOL_MISSING_NAME", {
 											item: JSON.stringify(item),
 										});
 									} else if (item.name.startsWith("mcp__driver__")) {
+										this.handleDriverCommandTool(
+											toolUseId,
+											item.name,
+											(item.input ?? {}) as UnknownRecord,
+										);
+									} else {
 										this.toolResults.set(toolUseId, {
 											toolName: item.name,
 											input: item.input,
@@ -468,17 +473,7 @@ export class Driver extends EventEmitter {
 							this.processDriverCommands();
 
 							// Send intermediate batch when all tools complete to improve navigator responsiveness
-							if (this.pendingTexts.length > 0) {
-								const batch = this.pendingTexts.slice();
-								this.pendingTexts = [];
-								const resolver = this.batchResolvers.shift();
-								if (resolver) {
-									resolver(batch);
-									this.logger.logEvent("DRIVER_INTERMEDIATE_BATCH", {
-										messageCount: batch.length,
-									});
-								}
-							}
+							this.flushPendingTexts("tool_complete");
 						}
 					}
 				} else if (message.type === "result") {
@@ -517,6 +512,25 @@ export class Driver extends EventEmitter {
 			this.pendingToolWaiters = [];
 			waiters.forEach((w) => {
 				w();
+			});
+		}
+	}
+
+	private flushPendingTexts(
+		source:
+			| "tool_complete"
+			| "permission_denied"
+			| "driver_command" = "tool_complete",
+	): void {
+		if (this.pendingTexts.length === 0) return;
+		const batch = this.pendingTexts.slice();
+		this.pendingTexts = [];
+		const resolver = this.batchResolvers.shift();
+		if (resolver) {
+			resolver(batch);
+			this.logger.logEvent("DRIVER_INTERMEDIATE_BATCH", {
+				messageCount: batch.length,
+				source,
 			});
 		}
 	}
@@ -587,6 +601,57 @@ export class Driver extends EventEmitter {
 		const commands = this.driverCommands.slice();
 		this.driverCommands = [];
 		return commands;
+	}
+
+	private handleDriverCommandTool(
+		toolUseId: string,
+		toolName: string,
+		input: UnknownRecord,
+	): void {
+		const command = convertMcpToolToDriverCommand(toolName, input);
+		if (command) {
+			this.driverCommands.push(command);
+			this.logger.logEvent("DRIVER_MCP_COMMAND", {
+				type: command.type,
+				context: command.context,
+			});
+		}
+
+		// Mark tool as completed immediately since MCP driver tools do not emit tool_result
+		if (this.pendingTools.has(toolUseId)) {
+			this.pendingTools.delete(toolUseId);
+		}
+		this.toolResults.delete(toolUseId);
+		this.toolIdMapping.delete(toolUseId);
+		this.toolNameMapping.delete(toolUseId);
+
+		this.resolvePendingToolWaiters();
+
+		// Flush buffered text now that the command is registered
+		if (this.pendingTools.size === 0) {
+			this.flushPendingTexts("driver_command");
+		}
+	}
+
+	public handlePermissionDenied(toolUseId: string): void {
+		if (!toolUseId) return;
+		if (!this.pendingTools.has(toolUseId)) return;
+
+		this.pendingTools.delete(toolUseId);
+		this.toolIdMapping.delete(toolUseId);
+		this.toolNameMapping.delete(toolUseId);
+		this.toolResults.delete(toolUseId);
+
+		this.logger.logEvent("DRIVER_PERMISSION_DENIED_CLEARED", {
+			toolUseId,
+		});
+
+		this.resolvePendingToolWaiters();
+		this.processDriverCommands();
+
+		if (this.pendingTools.size === 0) {
+			this.flushPendingTexts("permission_denied");
+		}
 	}
 
 	public async stop(): Promise<void> {

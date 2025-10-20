@@ -469,7 +469,26 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 			part.tool,
 			(state as { input?: unknown }).input,
 		);
-		if (!mappedName) return;
+		if (!mappedName) {
+			this.logDiagnostic("OPENCODE_TOOL_MAPPING_FAILED", {
+				originalTool: part.tool,
+				partId: part.id,
+				callId: part.callID,
+				status: state.status,
+			});
+			return;
+		}
+
+		// Log tool mapping for MCP tools to track if they're being handled
+		if (part.tool.startsWith("pair-")) {
+			this.logDiagnostic("OPENCODE_MCP_TOOL_MAPPED", {
+				originalTool: part.tool,
+				mappedName: mappedName,
+				partId: part.id,
+				callId: part.callID,
+				status: state.status,
+			});
+		}
 
 		switch (state.status) {
 			case "running": {
@@ -521,6 +540,11 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 				}
 
 				// Emit the tool_use message
+				this.logDiagnostic("OPENCODE_EMITTING_TOOL_USE", {
+					toolName: mappedName,
+					callId: part.callID,
+					partId: part.id,
+				});
 				this.queue.push({
 					type: "assistant",
 					session_id: this.sessionId ?? undefined,
@@ -538,6 +562,10 @@ export class OpencodeSessionBase implements AsyncIterable<AgentMessage> {
 
 				// Mark this tool as emitted
 				this.emittedToolCallIds.add(part.callID);
+				this.logDiagnostic("OPENCODE_TOOL_USE_EMITTED", {
+					toolName: mappedName,
+					callId: part.callID,
+				});
 
 				// Check if there's a buffered permission for this tool
 				const bufferedPermission = this.bufferedPermissions.get(part.callID);

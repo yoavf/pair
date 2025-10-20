@@ -142,7 +142,7 @@ export class LogAnalyzer {
 				}
 
 				entries.push(entry);
-			} catch (e) {}
+			} catch (_e) {}
 		}
 
 		return entries;

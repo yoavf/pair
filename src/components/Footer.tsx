@@ -48,6 +48,14 @@ const Footer: React.FC<Props> = ({
 		"Awaiting navigator approval:",
 	);
 
+	const isDriverPhase =
+		phase === "execution" || phase === "review" || phase === "complete";
+	const hasKnownPhase =
+		phase === "planning" ||
+		phase === "execution" ||
+		phase === "review" ||
+		phase === "complete";
+
 	return (
 		<Box flexDirection="column">
 			<Text color="gray">{horizontalLine}</Text>
@@ -66,22 +74,16 @@ const Footer: React.FC<Props> = ({
 							{formatModelName(models.navigator)} (planning)
 						</Text>
 					)}
-					{providers &&
-						models &&
-						(phase === "execution" || phase === "review") && (
-							<Text
-								backgroundColor={absRightColor || undefined}
-								color={absRightColor ? "black" : "gray"}
-							>
-								<Text bold>Driver</Text>: {providers.driver} /{" "}
-								{formatModelName(models.driver)}
-							</Text>
-						)}
-					{(!providers ||
-						!models ||
-						(phase !== "planning" &&
-							phase !== "execution" &&
-							phase !== "review")) && (
+					{providers && models && isDriverPhase && (
+						<Text
+							backgroundColor={absRightColor || undefined}
+							color={absRightColor ? "black" : "gray"}
+						>
+							<Text bold>Driver</Text>: {providers.driver} /{" "}
+							{formatModelName(models.driver)}
+						</Text>
+					)}
+					{(!providers || !models || !hasKnownPhase) && (
 						<Text
 							backgroundColor={absRightColor || undefined}
 							color={absRightColor ? "black" : "gray"}
@@ -102,8 +104,9 @@ const Footer: React.FC<Props> = ({
 			{/* Second line: Navigator (if available) */}
 			{providers &&
 				models &&
-				(phase === "execution" || phase === "review") &&
-				!isApprovalWaiting && (
+				isDriverPhase &&
+				!isApprovalWaiting &&
+				phase !== "complete" && (
 					<Box paddingX={1} marginTop={0}>
 						<Text
 							backgroundColor={absRightColor || undefined}

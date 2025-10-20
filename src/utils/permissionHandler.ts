@@ -14,6 +14,7 @@ import type {
 	PermissionGuardOptions,
 	PermissionRequest,
 } from "../types/permission.js";
+import type { Role } from "../types.js";
 import type { Logger } from "./logger.js";
 import { createTimeout, TIMEOUT_CONFIG } from "./timeouts.js";
 import { toolTracker } from "./toolTracking.js";
@@ -113,7 +114,16 @@ export class PermissionHandler {
 		}
 	}
 
-	createCanUseToolHandler(getDriverTranscript: () => string) {
+	createCanUseToolHandler(
+		getDriverTranscript: () => string,
+		hooks?: {
+			onDenied?: (details: {
+				toolName: string;
+				providerCallId?: string;
+				reason: string;
+			}) => void;
+		},
+	) {
 		return async (
 			toolName: string,
 			input: Record<string, unknown>,
@@ -133,14 +143,13 @@ export class PermissionHandler {
 				return { behavior: "allow", updatedInput: input };
 			}
 
-			// Get driver transcript
-			const transcript = getDriverTranscript();
+			// Get driver transcript (will be augmented for buffered edits)
+			let transcript = getDriverTranscript();
 
 			const providerCallId = options?.toolId;
-			const trackingId = providerCallId
+			let trackingId = providerCallId
 				? toolTracker.getToolIdByCallId(providerCallId)
 				: undefined;
-			const effectiveToolId = trackingId ?? providerCallId;
 			const metadata = options?.metadata ?? {};
 			const targetPath =
 				typeof metadata.file_path === "string"
@@ -148,6 +157,40 @@ export class PermissionHandler {
 					: typeof metadata.path === "string"
 						? metadata.path
 						: undefined;
+
+			if (!trackingId) {
+				trackingId = toolTracker.registerTool(
+					toolName,
+					input,
+					"driver" as Role,
+				);
+				if (providerCallId) {
+					toolTracker.associateCallId(trackingId, providerCallId);
+				}
+				toolTracker.markDisplayPrimed(trackingId);
+				const displayInput = { ...input, trackingId };
+				this.display?.showToolUse("driver", toolName, displayInput);
+				this.logger.logToolUse("driver", toolName, input, providerCallId);
+				this.logger.logEvent("DRIVER_TOOL_PENDING", {
+					id: providerCallId ?? trackingId,
+					tool: toolName,
+					trackingId,
+					targetPath,
+				});
+
+				if (!transcript) {
+					const summaryPath =
+						typeof input.file_path === "string"
+							? (input.file_path as string)
+							: typeof input.path === "string"
+								? (input.path as string)
+								: targetPath;
+					const fileSuffix = summaryPath ? ` - ${summaryPath}` : "";
+					transcript = `⚙️  Tool: ${toolName}${fileSuffix}`;
+				}
+			}
+
+			const effectiveToolId = trackingId ?? providerCallId;
 
 			// Display transfer to navigator for permission
 			this.display?.showTransfer("driver", "navigator", "Permission request");
@@ -177,6 +220,11 @@ export class PermissionHandler {
 			});
 
 			if (!result.allowed) {
+				hooks?.onDenied?.({
+					toolName,
+					providerCallId,
+					reason: result.reason,
+				});
 				return {
 					behavior: "deny",
 					message: result.reason,

@@ -175,10 +175,20 @@ export class OpenCodeProvider extends BaseEmbeddedProvider {
 		const sessionDirectory =
 			this.providerConfig.directory || options.projectPath || undefined;
 		const resolvedDirectory = this.resolveDirectory(sessionDirectory);
+		const normalizedMcpUrl = this.normalizeMcpUrl(options.mcpServerUrl);
+
+		// Log MCP configuration for debugging
+		if (normalizedMcpUrl && options.diagnosticLogger) {
+			options.diagnosticLogger("OPENCODE_MCP_CONFIG", {
+				role: options.mcpRole || "navigator",
+				mcpServerUrl: normalizedMcpUrl,
+			});
+		}
+
 		const resources = this.createClientResources({
 			role: options.mcpRole || "navigator",
 			directory: resolvedDirectory,
-			sessionMcpServerUrl: this.normalizeMcpUrl(options.mcpServerUrl),
+			sessionMcpServerUrl: normalizedMcpUrl,
 		});
 		const cleanup = this.registerCleanup(resources.cleanup);
 		const includePartialMessages =
