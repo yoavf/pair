@@ -16,6 +16,7 @@ export interface ImplementationLoopConfig {
 export class ImplementationLoop {
 	private sessionTimer?: NodeJS.Timeout;
 	private driverBuffer: string[] = [];
+	private reviewNudgeIssued = false;
 
 	constructor(
 		private driver: Driver,
@@ -83,9 +84,8 @@ export class ImplementationLoop {
 
 			// Check if driver requested review via MCP tools
 			const driverCommands = this.driver.getAndClearDriverCommands();
-			const driverCommand =
-				driverCommands.length > 0 ? driverCommands[0] : null;
-			const dcType = driverCommand?.type;
+			let driverCommand = driverCommands.length > 0 ? driverCommands[0] : null;
+			let dcType = driverCommand?.type;
 
 			this.logger.logEvent("IMPLEMENTATION_LOOP_LOOP_STATE", {
 				loopCount,
@@ -98,21 +98,34 @@ export class ImplementationLoop {
 
 			// Guardrail: if driver text indicates completion intent but no review tool was called, nudge to request review immediately
 			if (!dcType && !awaitingReviewDecision) {
-				const combinedDriverText = (driverMessages || [])
-					.join("\n")
-					.toLowerCase();
+				const rawDriverText = (driverMessages || []).join("\n");
+				const combinedDriverText = rawDriverText.toLowerCase();
 				if (this.detectsCompletionIntent(combinedDriverText)) {
-					this.display.updateStatus(
-						"Driver indicated completion — prompting to request review…",
-					);
-					const prompt =
-						"It sounds like you consider the implementation complete. Please request a review now by calling the mcp__driver__driverRequestReview tool with a brief context of what you implemented. Do not continue with further edits until the review is returned.";
-					driverMessages = await this.driver.continueWithFeedback(prompt);
-					continue;
+					if (!this.reviewNudgeIssued) {
+						this.reviewNudgeIssued = true;
+						this.display.updateStatus(
+							"Driver indicated completion — prompting to request review…",
+						);
+						const prompt =
+							"It sounds like you consider the implementation complete. Please request a review now by calling the mcp__driver__driverRequestReview tool with a brief context of what you implemented. Do not continue with further edits until the review is returned.";
+						driverMessages = await this.driver.continueWithFeedback(prompt);
+						continue;
+					}
+					this.logger.logEvent("IMPLEMENTATION_LOOP_SYNTHETIC_REVIEW_TRIGGER", {
+						driverMessageLength: rawDriverText.length,
+					});
+					driverCommand = {
+						type: "request_review",
+						context: rawDriverText.trim() || undefined,
+					};
+					dcType = driverCommand.type;
+				} else if (this.reviewNudgeIssued) {
+					this.reviewNudgeIssued = false;
 				}
 			}
 
 			if (dcType === "request_review") {
+				this.reviewNudgeIssued = false;
 				// Immediately stop the driver session to prevent it from producing more output while waiting for review
 				this.logger.logEvent("IMPLEMENTATION_LOOP_DRIVER_STOP_FOR_REVIEW", {});
 				await this.driver.stop();
